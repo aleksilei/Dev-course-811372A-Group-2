@@ -2,12 +2,9 @@
 
 ## Setup for local development
 
-Create a python venv in the repository root called `venv` and activate it.
-Naming is important to have consistent configurations for LSPs.
-
+Create the python virtual environment
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+make venv
 ```
 
 Install dependencies
@@ -15,9 +12,31 @@ Install dependencies
 make install
 ```
 
-### Useful commands
+## Useful commands
 
 There are quite many other useful make targets that can be checked with:
 ```bash
 make help
+```
+
+### Tests / Linters
+
+Run all checks **(Do this before committing)**
+```bash
+make check
+```
+
+Run pytests with
+```bash
+make test
+```
+
+You can run pylint and ruff with
+```bash
+make lint
+```
+
+or with the fix parameter for ruff (automagically fixes some issues)
+```bash
+make fix
 ```
