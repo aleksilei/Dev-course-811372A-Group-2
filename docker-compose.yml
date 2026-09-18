@@ -1,0 +1,15 @@
+services:
+  lock:
+    image: TBD:latest
+    deploy:
+      replicas: 2
+
+  gateway:
+    image: TBD:latest
+    deploy:
+      replicas: 1
+
+  cloud:
+    image: TBD:latest
+    deployd:
+      replicas: 1

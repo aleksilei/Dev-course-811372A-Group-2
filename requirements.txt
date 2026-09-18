@@ -1,0 +1,14 @@
+astroid==4.0.4
+dill==0.4.1
+iniconfig==2.3.0
+isort==9.0.1
+mccabe==0.7.0
+mypy_extensions==1.1.0
+packaging==26.3
+platformdirs==4.11.10
+pluggy==1.6.0
+Pygments==2.21.0
+pylint==4.0.8
+pytest==9.1.1
+ruff==0.16.8
+tomlkit==0.15.1

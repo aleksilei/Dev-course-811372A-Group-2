@@ -1,0 +1,15 @@
+[tool.pyright]
+venvPath = "."
+venv = "venv"
+extraPaths = ["lib/src"]
+
+[tool.pylint.main]
+init-hook = 'import sys; sys.path.insert(0, ".")'
+
+[tool.pylint.messages_control]
+disable = [
+    'missing-module-docstring',
+    'missing-class-docstring',
+    'missing-function-docstring',
+    'too-few-public-methods'
+]
