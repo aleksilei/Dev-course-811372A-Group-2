@@ -17,7 +17,7 @@ TEST_DIRS := $(wildcard */test)
 
 .PHONY: help
 .PHONY: install lint fix test check clean
-.PHONY: build run restart stop status ps logs
+.PHONY: build build-cloud build-gateway build-lock run restart stop status ps logs
 .PHONY: check-docker check-swarm swarm-init
 
 #========== Development ==========#
@@ -50,11 +50,22 @@ check: lint test
 clean:
 	find . -type d -name '__pycache__' -exec rm -rf {} +
 	find . -type d -name '*.egg-info' -exec rm -rf {} +
+	rm -rf ./.pytest_cache
+	rm -rf ./.ruff_cache
 
 #========== Docker ==========#
 
 build:
-	$(DOCKER) compose -f $(COMPOSE_FILE) build $(COMPONENT)
+	$(DOCKER) compose -f $(COMPOSE_FILE) build
+
+build-cloud:
+	$(DOCKER) compose -f $(COMPOSE_FILE) build cloud
+
+build-gateway:
+	$(DOCKER) compose -f $(COMPOSE_FILE) build gateway
+
+build-lock:
+	$(DOCKER) compose -f $(COMPOSE_FILE) build lock
 
 run: check-swarm
 	@echo "Deploying stack '$(STACK)'..."
@@ -129,7 +140,10 @@ help:
 	@echo "  test         Run tests"
 	@echo "  check        Run linting and tests"
 	@echo "  clean        Remove generated Python files"
-	@echo "  build        Build Docker images (COMPONENT=name for one)"
+	@echo "  build          Build Docker images (COMPONENT=name for one)"
+	@echo "  build-cloud    Build the cloud image"
+	@echo "  build-gateway  Build the gateway image"
+	@echo "  build-lock     Build the lock image"
 	@echo "  run          Deploy the Docker Swarm stack"
 	@echo "  restart      Restart the stack"
 	@echo "  stop         Remove the stack"
