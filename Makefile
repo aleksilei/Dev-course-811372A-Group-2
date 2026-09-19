@@ -35,7 +35,7 @@ install: venv
 	$(PIP) install --editable ./lib
 
 lint: venv
-	$(VENV_PYTHON) -m pylint cloud gateway lock lib
+	$(VENV_PYTHON) -m pylint cloud gateway lock lib/src/lib
 	$(VENV_BIN)/ruff check
 
 fix: venv
