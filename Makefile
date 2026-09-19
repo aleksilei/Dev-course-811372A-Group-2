@@ -37,6 +37,7 @@ install: venv
 lint: venv
 	$(VENV_PYTHON) -m pylint cloud gateway lock lib/src/lib
 	$(VENV_BIN)/ruff check
+	$(VENV_BIN)/ruff format --check
 
 fix: venv
 	$(RUFF) check --fix
