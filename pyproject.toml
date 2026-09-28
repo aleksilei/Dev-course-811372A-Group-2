@@ -22,3 +22,11 @@ extend-select = ['Q']
 
 [tool.ruff.lint.flake8-quotes]
 inline-quotes = 'single'
+
+# The package lives in lib/src/lib, so ruff can't find it from the repo root.
+[tool.ruff.lint.isort]
+known-first-party = ['lib']
+
+[tool.pytest.ini_options]
+addopts = '--import-mode=importlib'
+pythonpath = ['.']

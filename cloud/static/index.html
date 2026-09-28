@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Access Control Panel</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <header>
+      <h1>Access Control Panel</h1>
+      <span id="status">Loading…</span>
+    </header>
+
+    <section>
+      <h2>Connected gateways</h2>
+      <table>
+        <thead><tr><th>Gateway</th><th>Address</th><th>Connected since</th></tr></thead>
+        <tbody id="gateways"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Readers</h2>
+      <table>
+        <thead><tr><th>Reader</th><th>Gateway</th><th>Zone</th></tr></thead>
+        <tbody id="readers"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Access history</h2>
+      <form id="filter">
+        <input id="key" placeholder="Filter by key, e.g. key-alice">
+        <input id="reader" placeholder="Filter by reader, e.g. rd-1">
+      </form>
+      <table>
+        <thead>
+          <tr><th>Time (UTC)</th><th>Key</th><th>Reader</th><th>Zone</th><th>Gateway</th><th>Result</th></tr>
+        </thead>
+        <tbody id="events"></tbody>
+      </table>
+    </section>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+# The build context is the repository root: keep the venv, the database and
+# the private keys in data/ out of it.
+.git
+venv
+data
+docs
+**/__pycache__
+**/*.egg-info
+**/test
+**/.pytest_cache
+**/.ruff_cache

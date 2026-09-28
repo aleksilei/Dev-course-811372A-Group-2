@@ -5,7 +5,6 @@ COPY lib /opt/lib
 RUN pip install --no-cache-dir /opt/lib
 
 WORKDIR /app
-COPY cloud ./cloud
+COPY reader ./reader
 
-EXPOSE 8443 8444
-CMD ["python", "-m", "cloud"]
+CMD ["python", "-m", "reader"]

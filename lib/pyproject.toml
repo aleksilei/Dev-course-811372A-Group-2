@@ -1,8 +1,8 @@
 [project]
 name = "lib"
 version = "0.1.0"
-requires-python = ">=3.11"
-dependencies = []
+requires-python = ">=3.13"
+dependencies = ["websockets==17.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

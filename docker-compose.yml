@@ -1,15 +1,109 @@
-services:
-  lock:
-    image: TBD:latest
-    deploy:
-      replicas: 2
+# Run `make certs` (or `make run`) first: it creates the certificates mounted below.
 
-  gateway:
-    image: TBD:latest
-    deploy:
-      replicas: 1
+x-reader: &reader
+  image: dev-course/reader
+  pull_policy: never  # built locally by reader-1
+  networks:
+    - reader-vlan
+  volumes:
+    - ./data/certs/ca.pem:/certs/ca.pem:ro
+  depends_on:
+    - gateway-1
+  restart: unless-stopped
+
+x-reader-env: &reader-env
+  GATEWAY: 10.10.0.10:8765
+  KEYS: key-alice,key-bob,key-carol,key-mallory
+  SCAN_INTERVAL: 5
+
+services:
+  reader-1:
+    <<: *reader
+    build:
+      context: .
+      dockerfile: reader/Dockerfile
+    environment:
+      <<: *reader-env
+      READER_ID: rd-1
+      ZONE: front-door
+
+  reader-2:
+    <<: *reader
+    environment:
+      <<: *reader-env
+      READER_ID: rd-2
+      ZONE: employee-door
+
+  reader-3:
+    <<: *reader
+    environment:
+      <<: *reader-env
+      READER_ID: rd-3
+      ZONE: server-room
+
+  reader-4:
+    <<: *reader
+    environment:
+      <<: *reader-env
+      READER_ID: rd-4
+      ZONE: executive-room
+
+  gateway-1:
+    image: dev-course/gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      CLOUD: cloud:8443
+      ID: gw-1
+    volumes:
+      - ./data/certs/ca.pem:/certs/ca.pem:ro
+      - ./data/certs/gateway.pem:/certs/server.pem:ro
+      - ./data/certs/gateway.key:/certs/server.key:ro
+    networks:
+      reader-vlan:
+        ipv4_address: 10.10.0.10  # static IP, matches the gateway certificate
+      wan: {}
+    depends_on:
+      - cloud
+    restart: unless-stopped
 
   cloud:
-    image: TBD:latest
-    deployd:
-      replicas: 1
+    image: dev-course/cloud
+    build:
+      context: .
+      dockerfile: cloud/Dockerfile
+    environment:
+      DB_PATH: /data/master.db
+    volumes:
+      - ./data/cloud:/data
+      - ./data/certs/cloud.pem:/certs/server.pem:ro
+      - ./data/certs/cloud.key:/certs/server.key:ro
+    ports:
+      - "8443:8443"  # gateways (WSS)
+      - "8444:8444"  # admin control panel (HTTPS)
+    networks:
+      - wan
+    restart: unless-stopped
+
+  sqlite-web:
+    image: coleifer/sqlite-web:latest
+    environment:
+      SQLITE_DATABASE: master.db
+    volumes:
+      - ./data/cloud:/data  # the same database as the cloud
+    ports:
+      - "127.0.0.1:8080:8080"  # unauthenticated full DB access: local only
+    depends_on:
+      - cloud
+    restart: unless-stopped
+
+networks:
+  # Lock VLAN: IT-restricted L2 segment without internet access.
+  reader-vlan:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+  # Stands in for the public internet between gateways and the cloud.
+  wan: {}
