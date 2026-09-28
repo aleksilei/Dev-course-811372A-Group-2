@@ -67,6 +67,5 @@ make certs    # = venv/bin/python -m lib.certs data/certs
 This writes `ca.pem`/`ca.key` plus `gateway.*` and `cloud.*` to `data/certs/`
 (gitignored). The SANs match `docker-compose.yml`: the gateway's static IP
 `10.10.0.10`, the hostname `cloud`, and `localhost`. It needs the **OpenSSL 3**
-command line tool: `brew install openssl` on macOS, because the system
-`/usr/bin/openssl` is LibreSSL. The tests use the same function for throwaway
-certificates.
+command line tool (`openssl version` should report 3.x). The tests use the
+same function for throwaway certificates.

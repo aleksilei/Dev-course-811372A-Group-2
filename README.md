@@ -12,7 +12,7 @@ reader-1..4 --WSS--> gateway-1 --WSS--> cloud  <--HTTPS-- admin (control panel)
 ## Setup for local development
 
 Requires Python 3.13 (override with `make venv PYTHON=...`) and the OpenSSL 3
-command line tool for certificates (`brew install openssl` on macOS).
+command line tool (`openssl version` should report 3.x) for certificates.
 
 Create the python virtual environment
 ```bash
