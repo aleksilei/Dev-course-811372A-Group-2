@@ -218,3 +218,5 @@ __marimo__/
 
 # Mounted docker data directory
 data/
+
+.DS_Store
