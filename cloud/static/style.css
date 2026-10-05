@@ -57,3 +57,58 @@ input {
   color: #cf222e;
   font-weight: 600;
 }
+
+.hint {
+  margin-top: -0.5rem;
+  color: #656d76;
+  font-size: 0.875rem;
+}
+
+th small {
+  display: block;
+  color: #656d76;
+  font-weight: normal;
+}
+
+.matrix td,
+.matrix thead th + th {
+  text-align: center;
+  font-weight: 600;
+}
+
+.matrix td.yes {
+  color: #1a7f37;
+  background: #dafbe1;
+}
+
+.matrix td.no {
+  color: #cf222e;
+  background: #ffebe9;
+}
+
+.matrix button {
+  min-width: 2.5rem;
+  padding: 0.25rem 0.6rem;
+  border: 0;
+  border-radius: 6px;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.matrix button.yes {
+  background: #1f883d;
+}
+
+.matrix button.no {
+  background: #cf222e;
+}
+
+.matrix button:hover {
+  filter: brightness(1.1);
+}
+
+.matrix button:disabled {
+  cursor: progress;
+  opacity: 0.5;
+}
