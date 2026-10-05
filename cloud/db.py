@@ -35,6 +35,19 @@ ORDER BY rowid DESC
 LIMIT :limit
 """
 
+# Keys exist only through their groups, so also list keys seen at a reader:
+# the admin can then grant access to a key that was just turned away.
+KEYS = """
+SELECT key_uuid FROM KEY_GROUPS
+UNION
+SELECT key_uuid FROM ACCESS_EVENTS
+ORDER BY key_uuid
+"""
+
+# Group memberships of keys and readers, keyed by the column that holds the
+# member. The table and column names are constants, never user input.
+MEMBERSHIP_TABLES = {'key_uuid': 'KEY_GROUPS', 'reader_id': 'READER_GROUPS'}
+
 
 class Database:
     def __init__(self, path: str | Path) -> None:
@@ -83,6 +96,71 @@ class Database:
                 'SELECT id, gateway_id, zone_name FROM READERS ORDER BY id'
             )
             return [dict(row) for row in rows]
+
+    def access(self) -> dict:
+        """Everything the panel needs to show and edit who may open which reader."""
+        with self._connect() as conn:
+            return {
+                'keys': [row['key_uuid'] for row in conn.execute(KEYS)],
+                'groups': [
+                    row['id']
+                    for row in conn.execute('SELECT id FROM GROUPS ORDER BY id')
+                ],
+                'key_groups': [
+                    dict(row)
+                    for row in conn.execute(
+                        'SELECT key_uuid, group_id FROM KEY_GROUPS'
+                        ' ORDER BY key_uuid, group_id'
+                    )
+                ],
+                'reader_groups': [
+                    dict(row)
+                    for row in conn.execute(
+                        'SELECT reader_id, group_id FROM READER_GROUPS'
+                        ' ORDER BY reader_id, group_id'
+                    )
+                ],
+            }
+
+    def set_key_group(self, key_uuid: str, group_id: str, member: bool) -> None:
+        """Add a key to a group or remove it. Raises LookupError for unknown groups."""
+        self._set_membership('key_uuid', key_uuid, group_id, member)
+
+    def set_reader_group(self, reader_id: str, group_id: str, member: bool) -> None:
+        """Add a reader to a group or remove it. Raises LookupError for unknown
+        readers and groups."""
+        self._set_membership('reader_id', reader_id, group_id, member)
+
+    def _set_membership(
+        self, column: str, member_id: str, group_id: str, member: bool
+    ) -> None:
+        table = MEMBERSHIP_TABLES[column]
+        params = {'member_id': member_id, 'group_id': group_id}
+        with self._connect() as conn:
+            # SQLite doesn't enforce the REFERENCES clauses unless asked to.
+            if not conn.execute(
+                'SELECT 1 FROM GROUPS WHERE id = :group_id', params
+            ).fetchone():
+                raise LookupError(f'unknown group {group_id!r}')
+            if (
+                column == 'reader_id'
+                and not conn.execute(
+                    'SELECT 1 FROM READERS WHERE id = :member_id', params
+                ).fetchone()
+            ):
+                raise LookupError(f'unknown reader {member_id!r}')
+            if member:
+                conn.execute(
+                    f'INSERT OR IGNORE INTO {table} ({column}, group_id)'
+                    ' VALUES (:member_id, :group_id)',
+                    params,
+                )
+            else:
+                conn.execute(
+                    f'DELETE FROM {table}'
+                    f' WHERE {column} = :member_id AND group_id = :group_id',
+                    params,
+                )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
