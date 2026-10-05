@@ -29,6 +29,28 @@
     </section>
 
     <section>
+      <h2>Room access</h2>
+      <p class="hint">Which keys open which rooms right now: a key opens a room when they share a group.</p>
+      <table class="matrix" id="room-access"><thead></thead><tbody></tbody></table>
+    </section>
+
+    <section>
+      <h2>Key groups</h2>
+      <p class="hint">Click to add a key to a group (green) or remove it (red).</p>
+      <form id="add-key">
+        <input id="new-key" placeholder="Add a key, e.g. key-dave">
+        <button>Add key</button>
+      </form>
+      <table class="matrix" id="key-groups"><thead></thead><tbody></tbody></table>
+    </section>
+
+    <section>
+      <h2>Group rooms</h2>
+      <p class="hint">Click to let a group into a room (green) or keep it out (red).</p>
+      <table class="matrix" id="reader-groups"><thead></thead><tbody></tbody></table>
+    </section>
+
+    <section>
       <h2>Access history</h2>
       <form id="filter">
         <input id="key" placeholder="Filter by key, e.g. key-alice">
