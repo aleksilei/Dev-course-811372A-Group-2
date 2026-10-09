@@ -11,7 +11,6 @@ DOCKER := docker
 COMPOSE := $(DOCKER) compose -f docker-compose.yml
 
 CERTS_DIR := data/certs
-TEST_DIRS := test $(wildcard */test)
 
 .DEFAULT_GOAL := help
 
@@ -35,7 +34,7 @@ install: venv
 	$(PIP) install --editable ./lib
 
 lint: venv
-	$(VENV_PYTHON) -m pylint --recursive=y cloud gateway reader lib test conftest.py
+	$(VENV_PYTHON) -m pylint --recursive=y cloud gateway reader lib tests
 	$(VENV_BIN)/ruff check
 	$(VENV_BIN)/ruff format --check
 
@@ -43,8 +42,9 @@ fix: venv
 	$(RUFF) check --fix
 	$(RUFF) format
 
+# Unit and integration tests: the testpaths in pyproject.toml.
 test: venv
-	$(VENV_PYTHON) -m pytest $(TEST_DIRS)
+	$(VENV_PYTHON) -m pytest
 
 check: lint test
 

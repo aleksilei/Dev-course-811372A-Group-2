@@ -56,8 +56,8 @@ sqlite-web).
 |---|---|
 | `reader/`, `gateway/`, `cloud/` | one package + Dockerfile + README per component, run as `python -m <component>` |
 | `lib/` | shared code: env config, TLS contexts, WebSocket hub, certificates |
-| `*/test/` | unit tests per component |
-| `test/` | integration tests: readers → gateway → cloud over real TLS |
+| `tests/unit/<component>/` | unit tests, one directory per component |
+| `tests/integration/` | integration tests: readers → gateway → cloud in one process, over real TLS |
 
 ## Implementation decisions
 
@@ -126,8 +126,8 @@ Do it once `python:3.15-slim` is a final release (Docker Hub only had
    working. Check how 3.15 spells the group names (OpenSSL writes `x25519` in
    lower case); `is_post_quantum()` ignores case.
 5. **Tests:** with groups per context, the key-exchange matrix in
-   `lib/test/test_tls.py` no longer needs a process per peer, so
-   `lib/test/tls_peer.py` goes away and the matrix runs in-process.
+   `tests/unit/lib/test_tls.py` no longer needs a process per peer, so
+   `tests/unit/lib/tls_peer.py` goes away and the matrix runs in-process.
 
 ## Useful commands
 
@@ -148,7 +148,7 @@ Run pytests with
 make test
 ```
 
-`async def` tests run through a small hook in `conftest.py`, with no pytest
+`async def` tests run through a small hook in `tests/conftest.py`, with no pytest
 plugin needed.
 
 You can run pylint and ruff with

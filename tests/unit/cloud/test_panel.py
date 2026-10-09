@@ -10,8 +10,8 @@ from cloud.panel import PanelServer
 from lib import tls
 
 
-@pytest.fixture
-def get(certs, db):
+@pytest.fixture(name='get')
+def get_fixture(certs, db):
     """GET a path from a running panel: returns (status, content type, body)."""
     server = PanelServer(
         ('127.0.0.1', 0),

@@ -11,7 +11,7 @@ import pytest
 from lib import tls
 from lib.config import ConfigError
 
-OPENSSL_CONFIGS = Path(__file__).parents[1] / 'openssl'
+OPENSSL_CONFIGS = Path(__file__).parents[3] / 'lib' / 'openssl'
 PEER = Path(__file__).with_name('tls_peer.py')
 
 # How each version of a gateway or cloud sets up the gateway -> cloud hop:

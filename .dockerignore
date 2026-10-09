@@ -6,6 +6,6 @@ data
 docs
 **/__pycache__
 **/*.egg-info
-**/test
+tests
 **/.pytest_cache
 **/.ruff_cache
