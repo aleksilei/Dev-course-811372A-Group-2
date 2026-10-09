@@ -54,9 +54,10 @@ clean:
 	rm -rf ./.pytest_cache
 	rm -rf ./.ruff_cache
 
-certs: $(CERTS_DIR)/ca.pem
+# gateway-2.pem is the newest certificate, so setups made before it get a new set.
+certs: $(CERTS_DIR)/gateway-2.pem
 
-$(CERTS_DIR)/ca.pem:
+$(CERTS_DIR)/gateway-2.pem:
 	$(VENV_PYTHON) -m lib.certs $(CERTS_DIR)
 
 #========== Docker ==========#

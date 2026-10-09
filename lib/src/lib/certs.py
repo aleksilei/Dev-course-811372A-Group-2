@@ -12,6 +12,7 @@ from pathlib import Path
 # localhost is included so the servers can also be reached from the host.
 COMPOSE_SERVERS = {
     'gateway': 'IP:10.10.0.10,DNS:localhost,IP:127.0.0.1',
+    'gateway-2': 'IP:10.10.0.11,DNS:localhost,IP:127.0.0.1',
     'cloud': 'DNS:cloud,DNS:localhost,IP:127.0.0.1',
 }
 

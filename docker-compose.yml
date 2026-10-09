@@ -48,6 +48,16 @@ services:
       READER_ID: rd-4
       ZONE: executive-room
 
+  reader-5:
+    <<: *reader
+    environment:
+      <<: *reader-env
+      READER_ID: rd-5
+      ZONE: loading-dock
+      GATEWAY: 10.10.0.11:8765
+    depends_on:
+      - gateway-2
+
   gateway-1:
     image: dev-course/gateway
     build:
@@ -68,6 +78,27 @@ services:
       - cloud
     restart: unless-stopped
 
+  # Stands in for a gateway that hasn't been upgraded to ML-KEM: it only offers
+  # classical X25519, and the cloud falls back to it (see lib/README.md).
+  gateway-2:
+    image: dev-course/gateway
+    pull_policy: never  # built locally by gateway-1
+    environment:
+      CLOUD: cloud:8443
+      ID: gw-2
+      OPENSSL_CONF: /opt/lib/openssl/classical.cnf
+    volumes:
+      - ./data/certs/ca.pem:/certs/ca.pem:ro
+      - ./data/certs/gateway-2.pem:/certs/server.pem:ro
+      - ./data/certs/gateway-2.key:/certs/server.key:ro
+    networks:
+      reader-vlan:
+        ipv4_address: 10.10.0.11  # static IP, matches the gateway-2 certificate
+      wan: {}
+    depends_on:
+      - cloud
+    restart: unless-stopped
+
   cloud:
     image: dev-course/cloud
     build:
@@ -75,6 +106,9 @@ services:
       dockerfile: cloud/Dockerfile
     environment:
       DB_PATH: /data/master.db
+      # The image accepts hybrid X25519MLKEM768 and falls back to X25519.
+      # Once every gateway is upgraded, refuse classical ones (gateway-2):
+      # OPENSSL_CONF: /opt/lib/openssl/hybrid-only.cnf
     volumes:
       - ./data/cloud:/data
       - ./data/certs/cloud.pem:/certs/server.pem:ro

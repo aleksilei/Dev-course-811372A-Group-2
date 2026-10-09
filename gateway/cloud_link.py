@@ -7,6 +7,7 @@ import uuid
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import WebSocketException
 
+from lib import tls
 from lib.hub import FAIL
 
 log = logging.getLogger(__name__)
@@ -49,7 +50,11 @@ class CloudLink:
                     open_timeout=self.timeout,
                 ) as ws:
                     self._ws = ws
-                    log.info('connected to cloud at %s', self.uri)
+                    log.info(
+                        'connected to cloud at %s, key exchange %s',
+                        self.uri,
+                        tls.negotiated_group(ws.transport.get_extra_info('ssl_object')),
+                    )
                     async for message in ws:
                         self._dispatch(message)
             except (OSError, WebSocketException) as error:

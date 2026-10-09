@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from websockets.asyncio.server import ServerConnection
 from websockets.exceptions import ConnectionClosed
 
+from lib import tls
+
 log = logging.getLogger(__name__)
 
 FAIL = {'result': 'fail'}
@@ -25,21 +27,34 @@ class Hub:
         # connected() may be called from other threads (the cloud's panel).
         # The lock is never held across an await.
         self._lock = threading.Lock()
-        self._clients: dict[str, tuple[ServerConnection, str]] = {}
+        # client ID -> (connection, connected since, key-exchange group)
+        self._clients: dict[str, tuple[ServerConnection, str, str | None]] = {}
 
     def connected(self) -> list[dict]:
         with self._lock:
             return [
-                {'id': client_id, 'address': ws.remote_address[0], 'since': since}
-                for client_id, (ws, since) in sorted(self._clients.items())
+                {
+                    'id': client_id,
+                    'address': ws.remote_address[0],
+                    'since': since,
+                    'key_exchange': group,
+                    'post_quantum': tls.is_post_quantum(group),
+                }
+                for client_id, (ws, since, group) in sorted(self._clients.items())
             ]
 
     async def handle(self, ws: ServerConnection) -> None:
         client_id = ws.request.headers.get(self.id_header, 'unknown')
         since = datetime.now(UTC).isoformat(timespec='seconds')
+        group = tls.negotiated_group(ws.transport.get_extra_info('ssl_object'))
         with self._lock:
-            self._clients[client_id] = (ws, since)
-        log.info('%s connected from %s', client_id, ws.remote_address[0])
+            self._clients[client_id] = (ws, since, group)
+        log.info(
+            '%s connected from %s, key exchange %s',
+            client_id,
+            ws.remote_address[0],
+            group,
+        )
         try:
             async for message in ws:
                 await ws.send(json.dumps(await self._reply(message, client_id)))

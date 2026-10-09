@@ -16,6 +16,9 @@ SEED_ACCESS = [
     ('key-carol', 'rd-2', 'pass'),
     ('key-carol', 'rd-3', 'fail'),
     ('key-carol', 'rd-4', 'pass'),
+    ('key-alice', 'rd-5', 'pass'),
+    ('key-bob', 'rd-5', 'pass'),
+    ('key-carol', 'rd-5', 'fail'),
     ('key-mallory', 'rd-1', 'fail'),
     ('key-alice', 'rd-unknown', 'fail'),
 ]
@@ -68,6 +71,7 @@ def test_readers_lists_gateway_and_zone(db):
         {'id': 'rd-2', 'gateway_id': 'gw-1', 'zone_name': 'employee-door'},
         {'id': 'rd-3', 'gateway_id': 'gw-1', 'zone_name': 'server-room'},
         {'id': 'rd-4', 'gateway_id': 'gw-1', 'zone_name': 'executive-room'},
+        {'id': 'rd-5', 'gateway_id': 'gw-2', 'zone_name': 'loading-dock'},
     ]
 
 
@@ -78,4 +82,4 @@ def test_example_data_is_loaded_only_into_a_new_database(db):
 
     db.init()
 
-    assert len(db.readers()) == 3
+    assert len(db.readers()) == 4

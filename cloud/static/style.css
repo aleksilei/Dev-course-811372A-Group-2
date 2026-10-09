@@ -58,6 +58,11 @@ input {
   font-weight: 600;
 }
 
+.warn {
+  color: #9a6700;
+  font-weight: 600;
+}
+
 .hint {
   margin-top: -0.5rem;
   color: #656d76;

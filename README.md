@@ -5,8 +5,9 @@ which relays to the **Cloud Server**, whether a key may pass. The spec and
 architecture diagram are in [`docs/`](docs/system_spec.md).
 
 ```
-reader-1..4 --WSS--> gateway-1 --WSS--> cloud  <--HTTPS-- admin (control panel)
-   (reader-vlan, internal)        (wan)          sqlite-web on 127.0.0.1:8080
+reader-1..4 --WSS--> gateway-1 --WSS, X25519MLKEM768--> cloud  <--HTTPS-- admin (control panel)
+reader-5    --WSS--> gateway-2 --WSS, X25519 (legacy)-->        sqlite-web on 127.0.0.1:8080
+   (reader-vlan, internal)        (wan)
 ```
 
 ## Setup for local development
@@ -33,13 +34,21 @@ make run
 ```
 
 - Control panel: https://localhost:8444 (trust `data/certs/ca.pem` or accept
-  the browser warning)
+  the browser warning). It shows each connected gateway's key exchange, and
+  flags the classical ones.
 - Database editor (sqlite-web): http://127.0.0.1:8080
 - Follow the readers deciding: `make logs SERVICE=reader-3`
+- `gateway-2` stands in for a gateway without ML-KEM (classical `X25519`
+  only), with `reader-5` behind it. The cloud falls back to `X25519` for it;
+  uncomment the `hybrid-only.cnf` line in `docker-compose.yml` to see it
+  refused (and `reader-5` failing closed).
 - Stop: `make stop`
 
 All state lives in `data/` (gitignored): `data/certs/` and the SQLite database
 `data/cloud/master.db`, which is seeded with the example data on first start.
+A database from before `gw-2`/`rd-5` were added doesn't know `rd-5`, so its
+scans fail until you delete `data/cloud/master.db` (or add the rows in
+sqlite-web).
 
 ## Repository layout
 
@@ -56,9 +65,15 @@ All state lives in `data/` (gitignored): `data/certs/` and the SQLite database
   the ones below, so clients connect upwards and servers keep the connections
   in memory (`lib.hub`). All WebSocket code uses the asyncio API of the
   `websockets` package.
-- **Classical TLS 1.3 (X25519) on every hop in this version.** The gateway →
-  cloud hop moves to ML-KEM in v2, which is a change in `lib.tls` (see
-  [lib/README.md](lib/README.md)).
+- **Post-quantum hybrid key exchange on the gateway → cloud hop.** TLS 1.3
+  with `X25519MLKEM768`, falling back to classical `X25519` when the other end
+  has no ML-KEM, so upgraded and older gateways and clouds work together. Set
+  through an OpenSSL config (`OPENSSL_CONF`), because Python 3.13 can't set it
+  per connection; nothing above `lib.tls` changes. The reader and admin hops
+  stay on classical `X25519`. See [lib/README.md](lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback).
+- **The control panel shows the key exchange of each gateway**, read from the
+  TLS handshake through a CPython debug hook until the
+  [move to Python 3.15](#next-step-python-315) brings a public API for it.
 - **Fail closed.** Any timeout, disconnect or malformed answer means no access.
 - Env vars beyond the spec (ports, certificate paths, `KEYS`, `SCAN_INTERVAL`,
   `DB_PATH`) all have defaults; see each component's README.
@@ -67,11 +82,52 @@ All state lives in `data/` (gitignored): `data/certs/` and the SQLite database
 
 - The cloud does not authenticate gateways (no mutual TLS), and gateways don't
   authenticate readers.
-- Neither hop uses post-quantum key exchange yet.
+- The reader → gateway hop has no post-quantum key exchange (per the spec).
+- Gateway → cloud connections that fall back to classical `X25519` (an end
+  without ML-KEM) can be recorded now and decrypted by a future quantum
+  computer, until the cloud is switched to `hybrid-only.cnf`. The control
+  panel lists which gateways those are.
+- Certificates are classical (ECDSA P-256) on every hop.
 - The control panel has no admin authentication.
 - Physical access to the reader VLAN is assumed to be safe.
 - No gateway or cloud response caching for redundancy: the cloud being down
   means every door stays closed.
+
+## Next step: Python 3.15
+
+The ML-KEM version works around two things Python 3.13's `ssl` module can't
+do, both added in Python 3.15: setting the key-exchange groups of a context
+(`SSLContext.set_groups()`) and reporting the group a connection negotiated
+(`SSLObject.group()`). The workarounds are the process-wide OpenSSL configs in
+`lib/openssl/`, and a private CPython debug hook (`SSLContext._msg_callback`)
+that reads the group out of each ServerHello for the control panel and logs.
+Moving to 3.15 replaces both with public APIs. Nothing changes on the wire, so
+3.13 and 3.15 gateways and clouds work together during the rollout.
+
+Do it once `python:3.15-slim` is a final release (Docker Hub only had
+`3.15-rc-slim` in October 2026):
+
+1. **Runtime:** `FROM python:3.15-slim` in the three Dockerfiles,
+   `PYTHON ?= python3.15` in the `Makefile` and `requires-python = ">=3.15"`
+   in `lib/pyproject.toml`. Check that the pinned pylint and astroid support
+   3.15.
+2. **Groups per context:** `lib.tls._restrict()` calls
+   `context.set_groups(group)` instead of `set_ecdh_curve()`, and
+   `GATEWAY_CLOUD` becomes a group list read from an environment variable:
+   `*X25519MLKEM768:*X25519` (hybrid with fallback, the default),
+   `X25519MLKEM768` (hybrid only) or `X25519` (classical).
+3. **Remove the OpenSSL configs:** delete `lib/openssl/`,
+   `_check_openssl_conf()` and the `OPENSSL_CONF` lines in the gateway and
+   cloud Dockerfiles. In `docker-compose.yml`, `gateway-2` and the commented
+   hybrid-only switch of the cloud use the new environment variable.
+4. **Remove the debug hook:** delete `_record_group()`, `_server_hello_group()`
+   and `_negotiated` from `lib.tls`. `negotiated_group()` already uses
+   `SSLObject.group()` when it exists, so the control panel and the logs keep
+   working. Check how 3.15 spells the group names (OpenSSL writes `x25519` in
+   lower case); `is_post_quantum()` ignores case.
+5. **Tests:** with groups per context, the key-exchange matrix in
+   `lib/test/test_tls.py` no longer needs a process per peer, so
+   `lib/test/tls_peer.py` goes away and the matrix runs in-process.
 
 ## Useful commands
 

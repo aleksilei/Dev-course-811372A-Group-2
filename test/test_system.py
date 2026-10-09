@@ -127,7 +127,11 @@ async def test_panel_shows_the_event_and_the_connected_gateway(running_system):
     assert event['zone_name'] == 'server-room'
     assert event['gateway_id'] == 'gw-1'
     assert event['result'] == 'pass'
-    assert [gateway['id'] for gateway in gateways] == ['gw-1']
+    [gateway] = gateways
+    assert gateway['id'] == 'gw-1'
+    # Whichever group this process's OpenSSL config picks; test_tls covers which.
+    assert gateway['key_exchange'] is not None
+    assert gateway['post_quantum'] == tls.is_post_quantum(gateway['key_exchange'])
 
 
 async def test_readers_fail_closed_when_the_cloud_goes_down(running_system, wait_until):
