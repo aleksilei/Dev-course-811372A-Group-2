@@ -6,6 +6,7 @@ import pytest
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
 
+from lib import tls
 from lib.hub import Hub
 
 
@@ -22,9 +23,13 @@ class EchoHub(Hub):
 
 
 class FakeConnection:
-    def __init__(self, headers, messages):
+    def __init__(self, headers, messages, group=None):
         self.request = SimpleNamespace(headers=headers)
         self.remote_address = ('10.0.0.5', 50000)
+        # A plain connection, or TLS with an SSLObject that reports its group
+        # like Python 3.15's does.
+        ssl_object = group and SimpleNamespace(group=lambda: group)
+        self.transport = SimpleNamespace(get_extra_info={'ssl_object': ssl_object}.get)
         self.messages = messages
         self.sent = []
 
@@ -53,9 +58,26 @@ async def test_client_is_listed_only_while_connected():
     await hub.handle(FakeConnection({'Test-Id': 'rd-1'}, ['{}']))
 
     assert hub.connected_during_request == [
-        [{'id': 'rd-1', 'address': '10.0.0.5', 'since': ANY}]
+        [
+            {
+                'id': 'rd-1',
+                'address': '10.0.0.5',
+                'since': ANY,
+                'key_exchange': None,
+                'post_quantum': None,
+            }
+        ]
     ]
     assert hub.connected() == []
+
+
+async def test_lists_the_key_exchange_of_each_client():
+    hub = EchoHub()
+
+    await hub.handle(FakeConnection({'Test-Id': 'gw-1'}, ['{}'], 'X25519MLKEM768'))
+
+    [listed] = hub.connected_during_request[0]
+    assert (listed['key_exchange'], listed['post_quantum']) == ('X25519MLKEM768', True)
 
 
 async def test_client_without_id_header_is_unknown():
@@ -82,3 +104,20 @@ async def test_over_a_real_websocket():
             await ws.send('{"x": 1}')
 
             assert json.loads(await ws.recv()) == {'echo': {'x': 1}, 'from': 'gw-9'}
+
+
+async def test_over_tls_lists_the_negotiated_group(certs):
+    hub = EchoHub()
+    server_context = tls.server_context(certs.cert, certs.key, tls.READER_GATEWAY)
+    async with serve(hub.handle, '127.0.0.1', 0, ssl=server_context) as server:
+        uri = f'wss://localhost:{server.sockets[0].getsockname()[1]}'
+        async with connect(
+            uri,
+            ssl=tls.client_context(certs.ca, tls.READER_GATEWAY),
+            additional_headers={'Test-Id': 'rd-1'},
+        ) as ws:
+            await ws.send('{}')
+            await ws.recv()
+
+    [listed] = hub.connected_during_request[0]
+    assert (listed['key_exchange'], listed['post_quantum']) == ('X25519', False)

@@ -24,6 +24,12 @@ async function postJSON(path, body) {
   }
 }
 
+// How a gateway's key exchange is shown, by its post_quantum flag.
+const KEY_EXCHANGE = {
+  true: { label: 'post-quantum hybrid', className: 'pass' },
+  false: { label: 'classical', className: 'warn' },
+};
+
 // textContent only: IDs come from unauthenticated gateways and must not be
 // interpreted as HTML.
 function fillTable(tbody, rows, columns) {
@@ -33,10 +39,34 @@ function fillTable(tbody, rows, columns) {
       const td = document.createElement('td');
       td.textContent = row[column] ?? '–';
       if (column === 'result') td.className = row.result;
+      if (column === 'key_exchange') {
+        td.className = KEY_EXCHANGE[row.post_quantum]?.className ?? '';
+      }
       tr.append(td);
     }
     return tr;
   }));
+}
+
+function fillGateways(gateways) {
+  fillTable($('gateways'), gateways.map((gateway) => {
+    const kind = KEY_EXCHANGE[gateway.post_quantum];
+    return {
+      ...gateway,
+      key_exchange: kind ? `${gateway.key_exchange} (${kind.label})` : null,
+    };
+  }), ['id', 'address', 'since', 'key_exchange']);
+
+  const classical = gateways.filter((gateway) => gateway.post_quantum === false);
+  let summary = '';
+  if (classical.length > 0) {
+    summary = `${classical.length} of ${gateways.length} gateways use classical key `
+      + 'exchange: their traffic could be decrypted by a future quantum computer, '
+      + 'and switching the cloud to hybrid-only would disconnect them.';
+  } else if (gateways.length > 0 && gateways.every((gateway) => gateway.post_quantum)) {
+    summary = 'All connected gateways use post-quantum hybrid key exchange.';
+  }
+  $('key-exchange-summary').textContent = summary;
 }
 
 function headerCell(text, subtext) {
@@ -140,7 +170,7 @@ async function refresh() {
       getJSON(`/api/events?${filter}`),
       getJSON('/api/access'),
     ]);
-    fillTable($('gateways'), gateways, ['id', 'address', 'since']);
+    fillGateways(gateways);
     fillTable($('readers'), readers, ['id', 'gateway_id', 'zone_name']);
     fillTable($('events'), events,
       ['timestamp', 'key_uuid', 'reader_id', 'zone_name', 'gateway_id', 'result']);

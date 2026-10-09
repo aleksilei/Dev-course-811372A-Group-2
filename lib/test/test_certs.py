@@ -20,4 +20,5 @@ def test_generates_ca_and_one_key_pair_per_server(tmp_path):
 
 def test_compose_certificates_match_the_compose_addresses():
     assert 'IP:10.10.0.10' in COMPOSE_SERVERS['gateway']
+    assert 'IP:10.10.0.11' in COMPOSE_SERVERS['gateway-2']
     assert 'DNS:cloud' in COMPOSE_SERVERS['cloud']

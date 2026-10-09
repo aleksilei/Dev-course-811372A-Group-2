@@ -15,6 +15,7 @@ Run with `python -m cloud`. It serves two TLS listeners from one process:
 | `TLS_CERT` / `TLS_KEY` | `/certs/server.pem` / `/certs/server.key` | server certificate for both ports |
 | `GATEWAY_PORT` | `8443` | |
 | `PANEL_PORT` | `8444` | |
+| `OPENSSL_CONF` | `/opt/lib/openssl/hybrid.cnf` (image) | key exchange with gateways (port 8443 only): hybrid `X25519MLKEM768` with `X25519` fallback; `hybrid-only.cnf` refuses classical gateways, see [lib](../lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
 
 ## Gateway protocol
 
@@ -54,9 +55,14 @@ unless you trust `data/certs/ca.pem`. The panel is read-only vanilla
 HTML/CSS/JS (`static/`) and refreshes every 5 s. Edits are made through
 sqlite-web (`http://127.0.0.1:8080`).
 
+"Connected gateways" shows the key exchange of each gateway's connection:
+post-quantum hybrid, or classical (in amber) for gateways without ML-KEM. A
+line above the table counts the classical ones, which switching the cloud to
+`hybrid-only.cnf` would disconnect.
+
 | Endpoint | Returns |
 |---|---|
-| `GET /api/gateways` | connected gateways: `id`, `address`, `since` |
+| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown) and `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical) |
 | `GET /api/readers` | readers with their `gateway_id` and `zone_name` |
 | `GET /api/events?key=&reader=` | newest 100 access events, optionally filtered |
 

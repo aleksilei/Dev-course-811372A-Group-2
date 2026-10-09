@@ -1,13 +1,15 @@
 -- Example data, loaded once when the database is first created.
 
 INSERT INTO GATEWAYS (id) VALUES
-    ('gw-1');  -- controls the readers near the main entrance
+    ('gw-1'),  -- controls the readers near the main entrance
+    ('gw-2');  -- back of the building; not upgraded to ML-KEM yet
 
 INSERT INTO READERS (id, gateway_id, zone_name) VALUES
     ('rd-1', 'gw-1', 'front-door'),
     ('rd-2', 'gw-1', 'employee-door'),
     ('rd-3', 'gw-1', 'server-room'),
-    ('rd-4', 'gw-1', 'executive-room');
+    ('rd-4', 'gw-1', 'executive-room'),
+    ('rd-5', 'gw-2', 'loading-dock');
 
 INSERT INTO GROUPS (id) VALUES
     ('visitors'),
@@ -30,4 +32,5 @@ INSERT INTO READER_GROUPS (reader_id, group_id) VALUES
     ('rd-2', 'sysadmins'),
     ('rd-2', 'executives'),   -- employee door: staff only
     ('rd-3', 'sysadmins'),    -- server room: sysadmins only
-    ('rd-4', 'executives');   -- executive room: executives only
+    ('rd-4', 'executives'),   -- executive room: executives only
+    ('rd-5', 'employees');    -- loading dock: employees

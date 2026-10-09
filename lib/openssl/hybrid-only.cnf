@@ -1,0 +1,19 @@
+# Key exchange for the gateway -> cloud hop, loaded through OPENSSL_CONF (see
+# lib/README.md). It applies to the whole process, but the contexts that pin a
+# group in lib.tls (reader port, control panel) override it.
+#
+# X25519MLKEM768 only: peers without ML-KEM are refused. For when every gateway
+# and the cloud have been upgraded.
+
+# Fail on errors in this file: otherwise OpenSSL ignores it and uses its defaults.
+config_diagnostics = 1
+openssl_conf = openssl_init
+
+[openssl_init]
+ssl_conf = ssl_module
+
+[ssl_module]
+system_default = gateway_cloud
+
+[gateway_cloud]
+Groups = X25519MLKEM768
