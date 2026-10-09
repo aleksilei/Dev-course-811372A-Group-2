@@ -56,8 +56,10 @@ sqlite-web).
 |---|---|
 | `reader/`, `gateway/`, `cloud/` | one package + Dockerfile + README per component, run as `python -m <component>` |
 | `lib/` | shared code: env config, TLS contexts, WebSocket hub, certificates |
-| `*/test/` | unit tests per component |
-| `test/` | integration tests: readers → gateway → cloud over real TLS |
+| `tests/unit/<component>/` | unit tests, one directory per component |
+| `tests/integration/` | integration tests: readers → gateway → cloud in one process, over real TLS |
+| `tests/e2e/` | end-to-end tests: the docker-compose deployment, from the built images |
+| `.github/workflows/` | [CI/CD](#cicd): checks on every pull request, image releases on `v*` tags |
 
 ## Implementation decisions
 
@@ -126,8 +128,9 @@ Do it once `python:3.15-slim` is a final release (Docker Hub only had
    working. Check how 3.15 spells the group names (OpenSSL writes `x25519` in
    lower case); `is_post_quantum()` ignores case.
 5. **Tests:** with groups per context, the key-exchange matrix in
-   `lib/test/test_tls.py` no longer needs a process per peer, so
-   `lib/test/tls_peer.py` goes away and the matrix runs in-process.
+   `tests/unit/lib/test_tls.py` no longer needs a process per peer, so
+   `tests/unit/lib/tls_peer.py` goes away and the matrix runs in-process.
+   The `_server_hello_group()` tests go with the debug hook.
 
 ## Useful commands
 
@@ -148,8 +151,19 @@ Run pytests with
 make test
 ```
 
-`async def` tests run through a small hook in `conftest.py`, with no pytest
-plugin needed.
+It runs `tests/unit` and `tests/integration` (the `testpaths` in
+`pyproject.toml`, so a plain `pytest` does the same). `async def` tests run
+through a small hook in `tests/conftest.py`, with no pytest plugin needed.
+
+Run the end-to-end tests. They build the images, start the compose stack from
+them and check it from outside, as the doors and an admin see it: decisions,
+the key exchange of every hop, panel edits, the cloud going down, the cloud
+switched to hybrid-only. The stack gets its own certificates and database, so
+`data/` is left alone, but it uses the same ports as `make run`: stop the dev
+stack first.
+```bash
+make e2e
+```
 
 You can run pylint and ruff with
 ```bash
@@ -159,4 +173,44 @@ make lint
 or with the fix parameter for ruff (automagically fixes some issues)
 ```bash
 make fix
+```
+
+## CI/CD
+
+GitHub Actions, in `.github/workflows/`:
+
+| Workflow | Runs on | |
+|---|---|---|
+| `pr.yml` | every pull request | `make lint` and `make test`, `make e2e`, and `can-merge`, which passes when both do |
+| `release.yml` | a `v*` tag | the same checks, then builds the images for amd64 and arm64, runs the e2e tests on the amd64 ones and pushes them to the GitHub container registry |
+| `test.yml` | called by both | lint and tests, in `python:3.13-slim`: its OpenSSL has ML-KEM, and the runner's doesn't (pytest would skip those tests) |
+
+**Merging.** A pull request may be merged once its `can-merge` check is green.
+GitHub doesn't enforce that here (a private repository on GitHub Free has no
+branch protection), so don't merge a red one. With GitHub Pro or a public
+repository, protect `main` and require `can-merge` alone.
+
+**Releasing.** After a `git fetch`, tag a commit on `main` with `v` and a SemVer
+version, and push the tag:
+```bash
+git tag v1.0.0 origin/main
+```
+```bash
+git push origin v1.0.0
+```
+
+A tag that isn't `v<SemVer>` (e.g. `v1.0.0`, `v1.1.0-rc.1`) or isn't on `main`
+fails before anything is built. The images are built once into a temporary
+registry, the e2e tests run on them, and only then are those same images (same
+digests) copied to `ghcr.io/aleksilei/dev-course-811372a-group-2/` as `cloud`,
+`gateway` and `reader`, tagged `1.0.0`, plus `1.0` and `latest` when it is the
+newest release (a pre-release gets only its own tag).
+
+The packages are private, like the repository. To pull one, log in with a
+personal access token (classic) that has the `read:packages` scope:
+```bash
+docker login ghcr.io -u <your GitHub user>
+```
+```bash
+docker pull ghcr.io/aleksilei/dev-course-811372a-group-2/cloud:1.0.0
 ```

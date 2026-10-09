@@ -30,3 +30,5 @@ known-first-party = ['lib']
 [tool.pytest.ini_options]
 addopts = '--import-mode=importlib'
 pythonpath = ['.']
+# tests/e2e needs Docker and the built images: `make e2e` runs it.
+testpaths = ['tests/unit', 'tests/integration']

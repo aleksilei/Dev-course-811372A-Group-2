@@ -1,0 +1,143 @@
+# A v<SemVer> tag on main: lint and test, build the images for amd64 and
+# arm64, run the e2e tests on the amd64 ones, and only then push those same
+# images to the GitHub container registry (GHCR) as
+# ghcr.io/<owner>/<repo>/{cloud,gateway,reader}:<version>.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    name: Check the tag
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      image-tags: ${{ steps.tag.outputs.image-tags }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # main and every tag
+
+      - name: Check it is v<SemVer> on main, and pick the image tags
+        id: tag
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          # SemVer without build metadata, which an image tag can't hold.
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
+          if ! [[ $version =~ $semver ]]; then
+            echo "::error::$GITHUB_REF_NAME is not v<SemVer>, e.g. v1.2.0 or v1.3.0-rc.1"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main: merge first, then tag main"
+            exit 1
+          fi
+
+          # A pre-release gets only its own tag. A release also moves MAJOR.MINOR
+          # and latest, unless a higher release already has them.
+          image_tags=$version
+          if [[ $version != *-* ]]; then
+            releases=$(git tag --list 'v*' | sed -n 's/^v\([0-9]*\.[0-9]*\.[0-9]*\)$/\1/p' | sort -V)
+            minor=${version%.*}
+            if [[ $(awk -F. -v minor="$minor" '$1 "." $2 == minor' <<<"$releases" | tail -n 1) == "$version" ]]; then
+              image_tags+=" $minor"
+            fi
+            if [[ $(tail -n 1 <<<"$releases") == "$version" ]]; then
+              image_tags+=' latest'
+            fi
+          fi
+          echo "Image tags: $image_tags"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image-tags=$image_tags" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: tag
+    uses: ./.github/workflows/test.yml
+
+  release:
+    name: Build, e2e test and push the images
+    needs: [tag, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    services:
+      # Holds the built images until the e2e tests pass. Only then are they
+      # copied, unchanged, to GHCR.
+      staging:
+        image: registry:2
+        ports:
+          - 5000:5000
+    env:
+      STAGING: localhost:5000/dev-course
+      VERSION: ${{ needs.tag.outputs.version }}
+      IMAGE_TAGS: ${{ needs.tag.outputs.image-tags }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - run: make install
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: network=host  # to reach the staging registry
+
+      - name: Build the images for amd64 and arm64
+        run: |
+          source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for image in cloud gateway reader; do
+            docker buildx build . \
+              --file "$image/Dockerfile" \
+              --platform linux/amd64,linux/arm64 \
+              --label "org.opencontainers.image.source=$source" \
+              --label "org.opencontainers.image.version=$VERSION" \
+              --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+              --annotation "index:org.opencontainers.image.source=$source" \
+              --tag "$STAGING/$image:$GITHUB_SHA" \
+              --push
+          done
+
+      - name: Load the amd64 images under the names docker-compose.yml uses
+        run: |
+          for image in cloud gateway reader; do
+            docker pull "$STAGING/$image:$GITHUB_SHA"
+            docker tag "$STAGING/$image:$GITHUB_SHA" "dev-course/$image"
+          done
+
+      - name: Run the e2e tests on them
+        run: venv/bin/python -m pytest tests/e2e
+        env:
+          E2E_LOGS: e2e-compose.log
+
+      - name: Keep the container logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-compose-log
+          path: e2e-compose.log
+
+      - name: Push the tested images to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          registry=ghcr.io/${GITHUB_REPOSITORY,,}
+          for image in cloud gateway reader; do
+            for tag in $IMAGE_TAGS; do
+              # Both platforms, byte for byte: the images the e2e tests ran.
+              skopeo copy --all --preserve-digests --src-tls-verify=false \
+                "docker://$STAGING/$image:$GITHUB_SHA" "docker://$registry/$image:$tag"
+            done
+            echo "Pushed $registry/$image: $IMAGE_TAGS"
+          done

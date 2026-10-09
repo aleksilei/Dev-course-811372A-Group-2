@@ -11,12 +11,11 @@ DOCKER := docker
 COMPOSE := $(DOCKER) compose -f docker-compose.yml
 
 CERTS_DIR := data/certs
-TEST_DIRS := test $(wildcard */test)
 
 .DEFAULT_GOAL := help
 
 .PHONY: help
-.PHONY: install lint fix test check clean certs
+.PHONY: install lint fix test e2e check clean certs
 .PHONY: build build-cloud build-gateway build-reader run restart stop ps logs
 .PHONY: check-docker
 
@@ -35,7 +34,7 @@ install: venv
 	$(PIP) install --editable ./lib
 
 lint: venv
-	$(VENV_PYTHON) -m pylint --recursive=y cloud gateway reader lib test conftest.py
+	$(VENV_PYTHON) -m pylint --recursive=y cloud gateway reader lib tests
 	$(VENV_BIN)/ruff check
 	$(VENV_BIN)/ruff format --check
 
@@ -43,8 +42,13 @@ fix: venv
 	$(RUFF) check --fix
 	$(RUFF) format
 
+# Unit and integration tests: the testpaths in pyproject.toml.
 test: venv
-	$(VENV_PYTHON) -m pytest $(TEST_DIRS)
+	$(VENV_PYTHON) -m pytest
+
+# Builds the images, then runs the compose stack from them.
+e2e: venv check-docker build
+	$(VENV_PYTHON) -m pytest tests/e2e
 
 check: lint test
 
@@ -107,6 +111,7 @@ help:
 	@echo "  lint           Run linters"
 	@echo "  fix            Automatically fix lint/format issues"
 	@echo "  test           Run unit and integration tests"
+	@echo "  e2e            Build the images and run the end-to-end tests on them"
 	@echo "  check          Run linting and tests"
 	@echo "  clean          Remove generated Python files"
 	@echo "  certs          Generate the dev CA and server certificates"

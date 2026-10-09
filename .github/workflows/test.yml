@@ -1,0 +1,35 @@
+# Lint and the unit and integration tests (make lint, make test). Called by
+# pr.yml and release.yml.
+name: Test
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # The base image of the Dockerfiles, with the OpenSSL >= 3.5 that the ML-KEM
+    # tests need. The runner's own Python links OpenSSL 3.0, where pytest would
+    # skip them.
+    container: python:3.13-slim
+    steps:
+      - name: Install make
+        run: apt-get update && apt-get install --yes --no-install-recommends make
+
+      - uses: actions/checkout@v7
+
+      - name: Check that OpenSSL has ML-KEM
+        run: >-
+          python -c 'import ssl;
+          print(ssl.OPENSSL_VERSION);
+          assert ssl.OPENSSL_VERSION_INFO >= (3, 5), "the ML-KEM tests would be skipped"'
+
+      - run: make install
+
+      - run: make lint
+
+      - run: make test

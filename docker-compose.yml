@@ -1,4 +1,6 @@
 # Run `make certs` (or `make run`) first: it creates the certificates mounted below.
+# They and the database live in DATA_DIR (default ./data); the e2e tests set
+# their own, and SCAN_INTERVAL (default 5 s) to scan faster.
 
 x-reader: &reader
   image: dev-course/reader
@@ -6,7 +8,7 @@ x-reader: &reader
   networks:
     - reader-vlan
   volumes:
-    - ./data/certs/ca.pem:/certs/ca.pem:ro
+    - ${DATA_DIR:-./data}/certs/ca.pem:/certs/ca.pem:ro
   depends_on:
     - gateway-1
   restart: unless-stopped
@@ -14,7 +16,7 @@ x-reader: &reader
 x-reader-env: &reader-env
   GATEWAY: 10.10.0.10:8765
   KEYS: key-alice,key-bob,key-carol,key-mallory
-  SCAN_INTERVAL: 5
+  SCAN_INTERVAL: ${SCAN_INTERVAL:-5}
 
 services:
   reader-1:
@@ -67,9 +69,9 @@ services:
       CLOUD: cloud:8443
       ID: gw-1
     volumes:
-      - ./data/certs/ca.pem:/certs/ca.pem:ro
-      - ./data/certs/gateway.pem:/certs/server.pem:ro
-      - ./data/certs/gateway.key:/certs/server.key:ro
+      - ${DATA_DIR:-./data}/certs/ca.pem:/certs/ca.pem:ro
+      - ${DATA_DIR:-./data}/certs/gateway.pem:/certs/server.pem:ro
+      - ${DATA_DIR:-./data}/certs/gateway.key:/certs/server.key:ro
     networks:
       reader-vlan:
         ipv4_address: 10.10.0.10  # static IP, matches the gateway certificate
@@ -88,9 +90,9 @@ services:
       ID: gw-2
       OPENSSL_CONF: /opt/lib/openssl/classical.cnf
     volumes:
-      - ./data/certs/ca.pem:/certs/ca.pem:ro
-      - ./data/certs/gateway-2.pem:/certs/server.pem:ro
-      - ./data/certs/gateway-2.key:/certs/server.key:ro
+      - ${DATA_DIR:-./data}/certs/ca.pem:/certs/ca.pem:ro
+      - ${DATA_DIR:-./data}/certs/gateway-2.pem:/certs/server.pem:ro
+      - ${DATA_DIR:-./data}/certs/gateway-2.key:/certs/server.key:ro
     networks:
       reader-vlan:
         ipv4_address: 10.10.0.11  # static IP, matches the gateway-2 certificate
@@ -110,9 +112,9 @@ services:
       # Once every gateway is upgraded, refuse classical ones (gateway-2):
       # OPENSSL_CONF: /opt/lib/openssl/hybrid-only.cnf
     volumes:
-      - ./data/cloud:/data
-      - ./data/certs/cloud.pem:/certs/server.pem:ro
-      - ./data/certs/cloud.key:/certs/server.key:ro
+      - ${DATA_DIR:-./data}/cloud:/data
+      - ${DATA_DIR:-./data}/certs/cloud.pem:/certs/server.pem:ro
+      - ${DATA_DIR:-./data}/certs/cloud.key:/certs/server.key:ro
     ports:
       - "8443:8443"  # gateways (WSS)
       - "8444:8444"  # admin control panel (HTTPS)
@@ -125,7 +127,7 @@ services:
     environment:
       SQLITE_DATABASE: master.db
     volumes:
-      - ./data/cloud:/data  # the same database as the cloud
+      - ${DATA_DIR:-./data}/cloud:/data  # the same database as the cloud
     ports:
       - "127.0.0.1:8080:8080"  # unauthenticated full DB access: local only
     depends_on:

@@ -30,7 +30,7 @@ table:
 A pinned group is the only one the context offers or accepts. Pinning matters
 even for classical TLS: OpenSSL ≥ 3.5, which ships in the `python:3.13-slim`
 images, prefers the post-quantum hybrid `X25519MLKEM768` whenever both ends
-support it. The tests in `lib/test/test_tls.py` check that the server accepts,
+support it. The tests in `tests/unit/lib/test_tls.py` check that the server accepts,
 and the client offers, nothing but the pinned group.
 
 ### Gateway → cloud: ML-KEM hybrid with classical fallback
