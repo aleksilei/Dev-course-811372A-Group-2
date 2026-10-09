@@ -1,0 +1,7 @@
+# The cloud once every gateway is upgraded: it refuses gateways without ML-KEM
+# (see lib/README.md). Used by the e2e tests on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f tests/e2e/compose.hybrid-only.yml up -d cloud
+services:
+  cloud:
+    environment:
+      OPENSSL_CONF: /opt/lib/openssl/hybrid-only.cnf
