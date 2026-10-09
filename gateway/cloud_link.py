@@ -83,6 +83,10 @@ class CloudLink:
             reply = json.loads(message)
             request_id = reply['request_id']
         except (ValueError, TypeError, KeyError):
+            request_id = None
+        # request() only sends string IDs. Anything else is malformed, and a
+        # list or object can't even be looked up (TypeError would end run()).
+        if not isinstance(request_id, str):
             log.warning('ignoring malformed reply from cloud')
             return
         future = self._pending.get(request_id)

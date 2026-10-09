@@ -1,3 +1,4 @@
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import ANY
@@ -5,6 +6,7 @@ from unittest.mock import ANY
 import pytest
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
+from websockets.exceptions import ConnectionClosedError
 
 from lib import tls
 from lib.hub import Hub
@@ -39,6 +41,30 @@ class FakeConnection:
 
     async def send(self, message):
         self.sent.append(json.loads(message))
+
+
+class OpenConnection(FakeConnection):
+    """Stays open, without sending anything, until close() is called."""
+
+    def __init__(self, headers, address):
+        super().__init__(headers, [])
+        self.remote_address = (address, 50000)
+        self.closed = asyncio.Event()
+
+    def close(self):
+        self.closed.set()
+
+    async def __aiter__(self):
+        await self.closed.wait()
+        for message in self.messages:
+            yield message
+
+
+class HangingUpConnection(FakeConnection):
+    """A client that disconnects before its reply is sent."""
+
+    async def send(self, message):
+        raise ConnectionClosedError(None, None)
 
 
 async def test_answers_every_request_with_respond():
@@ -78,6 +104,35 @@ async def test_lists_the_key_exchange_of_each_client():
 
     [listed] = hub.connected_during_request[0]
     assert (listed['key_exchange'], listed['post_quantum']) == ('X25519MLKEM768', True)
+
+
+async def test_reconnected_client_stays_listed_when_its_old_connection_closes(
+    wait_until,
+):
+    # A gateway can reconnect before the cloud notices its old connection died.
+    hub = EchoHub()
+    old = OpenConnection({'Test-Id': 'gw-1'}, '10.0.0.1')
+    new = OpenConnection({'Test-Id': 'gw-1'}, '10.0.0.2')
+    old_task = asyncio.create_task(hub.handle(old))
+    await wait_until(hub.connected)
+    new_task = asyncio.create_task(hub.handle(new))
+    await wait_until(lambda: hub.connected()[0]['address'] == '10.0.0.2')
+
+    old.close()
+    await old_task
+
+    assert [client['address'] for client in hub.connected()] == ['10.0.0.2']
+    new.close()
+    await new_task
+    assert hub.connected() == []
+
+
+async def test_client_hanging_up_before_its_reply_is_unlisted():
+    hub = EchoHub()
+
+    await hub.handle(HangingUpConnection({'Test-Id': 'rd-1'}, ['{}']))
+
+    assert hub.connected() == []
 
 
 async def test_client_without_id_header_is_unknown():

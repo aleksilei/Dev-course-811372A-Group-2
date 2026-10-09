@@ -128,6 +128,7 @@ Do it once `python:3.15-slim` is a final release (Docker Hub only had
 5. **Tests:** with groups per context, the key-exchange matrix in
    `tests/unit/lib/test_tls.py` no longer needs a process per peer, so
    `tests/unit/lib/tls_peer.py` goes away and the matrix runs in-process.
+   The `_server_hello_group()` tests go with the debug hook.
 
 ## Useful commands
 

@@ -63,6 +63,19 @@ async def test_fails_closed_when_gateway_does_not_answer():
         assert await client.authorize('key-alice') is False
 
 
+@pytest.mark.parametrize(
+    'reply',
+    ['not json', '"pass"', '["pass"]', '{}', '{"result": "PASS"}', '{"result": true}'],
+)
+async def test_fails_closed_on_anything_but_an_explicit_pass(reply):
+    async def gateway(ws):
+        async for _ in ws:
+            await ws.send(reply)
+
+    async with client_of(gateway) as client:
+        assert await client.authorize('key-alice') is False
+
+
 async def test_reconnects_after_a_failure():
     connections = []
 

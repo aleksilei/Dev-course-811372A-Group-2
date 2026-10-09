@@ -185,6 +185,38 @@ def test_is_post_quantum(group, post_quantum):
     assert tls.is_post_quantum(group) is post_quantum
 
 
+def server_hello(*extensions):
+    """A TLS 1.3 ServerHello handshake message with these (type, data) extensions."""
+    body = b'\x03\x03' + bytes(32) + b'\x00'  # legacy version, random, session ID
+    body += b'\x13\x01\x00'  # cipher suite, compression method
+    data = b''.join(
+        kind.to_bytes(2) + len(ext).to_bytes(2) + ext for kind, ext in extensions
+    )
+    body += len(data).to_bytes(2) + data
+    return b'\x02' + len(body).to_bytes(3) + body
+
+
+SUPPORTED_VERSIONS = (43, b'\x03\x04')
+
+
+@pytest.mark.parametrize(
+    ('code_point', 'group'),
+    [(0x11EC, 'X25519MLKEM768'), (0x001D, 'X25519'), (0x0017, '0x0017')],
+)
+def test_reads_the_group_from_the_key_share_of_a_server_hello(code_point, group):
+    key_share = (51, code_point.to_bytes(2) + (32).to_bytes(2) + bytes(32))
+    read = tls._server_hello_group  # pylint: disable=protected-access
+
+    assert read(server_hello(SUPPORTED_VERSIONS, key_share)) == group
+
+
+def test_server_hello_without_key_share_is_an_error():
+    read = tls._server_hello_group  # pylint: disable=protected-access
+
+    with pytest.raises(ValueError, match='key_share'):
+        read(server_hello(SUPPORTED_VERSIONS))
+
+
 def test_unreadable_server_hello_leaves_the_group_unknown():
     class Connection:  # stands in for an SSLObject
         pass

@@ -83,3 +83,91 @@ def test_example_data_is_loaded_only_into_a_new_database(db):
     db.init()
 
     assert len(db.readers()) == 4
+
+
+def test_access_lists_groups_and_memberships(db):
+    access = db.access()
+
+    assert access['keys'] == ['key-alice', 'key-bob', 'key-carol']
+    assert access['groups'] == ['employees', 'executives', 'sysadmins', 'visitors']
+    assert access['key_groups'] == [
+        {'key_uuid': 'key-alice', 'group_id': 'employees'},
+        {'key_uuid': 'key-bob', 'group_id': 'employees'},
+        {'key_uuid': 'key-bob', 'group_id': 'sysadmins'},
+        {'key_uuid': 'key-carol', 'group_id': 'executives'},
+    ]
+    assert len(access['reader_groups']) == 10
+    assert {'reader_id': 'rd-3', 'group_id': 'sysadmins'} in access['reader_groups']
+
+
+def test_access_also_lists_keys_seen_at_a_reader(db):
+    # So the admin can grant access to a key that was just turned away.
+    db.authorize('key-mallory', 'rd-1', 'gw-1')
+    db.authorize('key-bob', 'rd-1', 'gw-1')
+
+    assert db.access()['keys'] == ['key-alice', 'key-bob', 'key-carol', 'key-mallory']
+
+
+def test_adding_a_key_to_a_group_grants_access(db):
+    db.set_key_group('key-mallory', 'visitors', True)
+
+    assert db.authorize('key-mallory', 'rd-1', 'gw-1') == 'pass'
+    assert db.authorize('key-mallory', 'rd-2', 'gw-1') == 'fail'
+
+
+def test_removing_a_key_from_a_group_revokes_access(db):
+    db.set_key_group('key-bob', 'sysadmins', False)
+
+    assert db.authorize('key-bob', 'rd-3', 'gw-1') == 'fail'
+    assert db.authorize('key-bob', 'rd-2', 'gw-1') == 'pass'  # still an employee
+
+
+def test_reader_groups_decide_access_too(db):
+    db.set_reader_group('rd-3', 'employees', True)
+    assert db.authorize('key-alice', 'rd-3', 'gw-1') == 'pass'
+
+    db.set_reader_group('rd-3', 'employees', False)
+    assert db.authorize('key-alice', 'rd-3', 'gw-1') == 'fail'
+
+
+def test_setting_a_membership_that_is_already_so_changes_nothing(db):
+    before = db.access()
+
+    db.set_key_group('key-bob', 'sysadmins', True)
+    db.set_key_group('key-alice', 'sysadmins', False)
+    db.set_reader_group('rd-3', 'sysadmins', True)
+    db.set_reader_group('rd-3', 'visitors', False)
+
+    assert db.access() == before
+
+
+@pytest.mark.parametrize('member', [True, False])
+def test_unknown_group_is_refused(db, member):
+    before = db.access()
+
+    with pytest.raises(LookupError, match="unknown group 'nope'"):
+        db.set_key_group('key-bob', 'nope', member)
+    with pytest.raises(LookupError, match="unknown group 'nope'"):
+        db.set_reader_group('rd-1', 'nope', member)
+
+    assert db.access() == before
+
+
+def test_unknown_reader_is_refused(db):
+    before = db.access()
+
+    with pytest.raises(LookupError, match="unknown reader 'rd-9'"):
+        db.set_reader_group('rd-9', 'visitors', True)
+
+    assert db.access() == before
+
+
+def test_ids_are_stored_as_given(db):
+    # Key IDs come from unauthenticated gateways, and the membership SQL is
+    # built with an f-string (for constant table and column names only).
+    key = "key'); DROP TABLE KEY_GROUPS; --"
+
+    db.set_key_group(key, 'visitors', True)
+
+    assert db.authorize(key, 'rd-1', 'gw-1') == 'pass'
+    assert key in db.access()['keys']
