@@ -133,11 +133,22 @@ jobs:
         run: |
           echo "$TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           registry=ghcr.io/${GITHUB_REPOSITORY,,}
+
+          # Both platforms, byte for byte: the images the e2e tests ran. For a
+          # few seconds after the push that creates a package, GHCR refuses
+          # this token on it (every first push in the v2.0.0 release), so retry.
+          copy() {  # copy <image> <tag>
+            for try in 1 2 3 4 5; do
+              skopeo copy --all --preserve-digests --src-tls-verify=false \
+                "docker://$STAGING/$1:$GITHUB_SHA" "docker://$registry/$1:$2" && return
+              echo "::warning::pushing $1:$2 failed (try $try of 5)"
+              [ "$try" -lt 5 ] && sleep $((try * 15))
+            done
+            return 1
+          }
           for image in cloud gateway reader; do
             for tag in $IMAGE_TAGS; do
-              # Both platforms, byte for byte: the images the e2e tests ran.
-              skopeo copy --all --preserve-digests --src-tls-verify=false \
-                "docker://$STAGING/$image:$GITHUB_SHA" "docker://$registry/$image:$tag"
+              copy "$image" "$tag"
             done
             echo "Pushed $registry/$image: $IMAGE_TAGS"
           done
