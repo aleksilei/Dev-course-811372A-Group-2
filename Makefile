@@ -17,6 +17,7 @@ CERTS_DIR := data/certs
 .PHONY: help
 .PHONY: install lint fix test e2e check clean certs
 .PHONY: build build-cloud build-gateway build-reader run restart stop ps logs
+.PHONY: run-scaled stop-scaled ps-scaled logs-scaled
 .PHONY: check-docker
 
 #========== Development ==========#
@@ -93,6 +94,37 @@ ps: check-docker
 logs: check-docker
 	$(COMPOSE) logs -f $(SERVICE)
 
+#========== Scaled stack ==========#
+# The default stack plus GATEWAYS sites of READERS readers each, the last
+# CLASSICAL of them without ML-KEM. lib.topology generates it into SCALED_DIR
+# (gitignored). It uses the default stack's ports, so only one runs at a time.
+
+GATEWAYS ?= 10
+READERS ?= 8
+CLASSICAL ?= 2
+SCALED_DIR := data-scaled
+SCALED := DATA_DIR=./$(SCALED_DIR) $(DOCKER) compose -p dev-course-scaled \
+	-f docker-compose.yml -f $(SCALED_DIR)/docker-compose.scaled.yml
+
+run-scaled: check-docker venv
+	@if [ -n "$$($(COMPOSE) ps -q)" ]; then \
+		echo "ERROR: the default stack is running (same ports): make stop first."; \
+		exit 1; \
+	fi
+	$(VENV_PYTHON) -m lib.topology $(SCALED_DIR) $(GATEWAYS) $(READERS) $(CLASSICAL)
+	$(COMPOSE) build
+	$(SCALED) up --detach --remove-orphans
+	@echo "Control panel: https://localhost:8444 (CA: $(SCALED_DIR)/certs/ca.pem)"
+
+stop-scaled: check-docker
+	@if [ -f $(SCALED_DIR)/docker-compose.scaled.yml ]; then $(SCALED) down; fi
+
+ps-scaled: check-docker
+	$(SCALED) ps
+
+logs-scaled: check-docker
+	$(SCALED) logs -f $(SERVICE)
+
 check-docker:
 	@command -v $(DOCKER) >/dev/null 2>&1 || { \
 		echo "ERROR: Docker is not installed."; \
@@ -124,3 +156,7 @@ help:
 	@echo "  stop           Stop and remove the containers"
 	@echo "  ps             Show container status"
 	@echo "  logs           Follow logs (SERVICE=name for one service)"
+	@echo "  run-scaled     Start the default stack plus GATEWAYS=10 sites of READERS=8 readers"
+	@echo "  stop-scaled    Stop and remove the scaled stack"
+	@echo "  ps-scaled      Show the scaled stack's container status"
+	@echo "  logs-scaled    Follow the scaled stack's logs (SERVICE=name for one service)"

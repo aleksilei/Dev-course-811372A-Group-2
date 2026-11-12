@@ -218,5 +218,7 @@ __marimo__/
 
 # Mounted docker data directory
 data/
+# Generated scaled stack (make run-scaled)
+data-scaled/
 
 .DS_Store
