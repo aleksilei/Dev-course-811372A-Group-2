@@ -73,7 +73,7 @@ def summarize(
         'classical_traffic_share': _share(
             sum(traffic_at[g] for g in classical), len(events)
         ),
-        # What switching the cloud to hybrid-only.cnf would cut off.
+        # What switching the cloud to KEY_EXCHANGE=hybrid-only would cut off.
         'hybrid_only_disconnects': {
             'gateways': len(classical),
             'readers': sum(readers_at[g] for g in classical),

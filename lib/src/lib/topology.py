@@ -101,7 +101,7 @@ def compose(topology: Topology) -> dict:
         }
         environment = {'CLOUD': 'cloud:8443', 'ID': f'gw-s{n}'}
         if topology.is_classical(n):
-            environment['OPENSSL_CONF'] = '/opt/lib/openssl/classical.cnf'
+            environment['KEY_EXCHANGE'] = 'classical'
         services[f'gateway-s{n}'] = {
             'image': 'dev-course/gateway',
             'pull_policy': 'never',

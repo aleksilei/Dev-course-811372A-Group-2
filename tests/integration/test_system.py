@@ -47,14 +47,14 @@ def running_system_fixture(certs, db, wait_until):
         threading.Thread(
             target=panel.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True
         ).start()
-        cloud_context = tls.server_context(certs.cert, certs.key, tls.GATEWAY_CLOUD)
+        cloud_context = tls.server_context(certs.cert, certs.key, tls.gateway_cloud())
         gateway_context = tls.server_context(certs.cert, certs.key, tls.READER_GATEWAY)
 
         async with serve(gateways.handle, '127.0.0.1', 0, ssl=cloud_context) as cloud:
             link = CloudLink(
                 f'wss://localhost:{port(cloud)}',
                 'gw-1',
-                tls.client_context(certs.ca, tls.GATEWAY_CLOUD),
+                tls.client_context(certs.ca, tls.gateway_cloud()),
                 retry_delay=0.05,
             )
             link_task = asyncio.create_task(link.run())

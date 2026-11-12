@@ -1,47 +1,65 @@
 import logging
 import os
 import ssl
-import weakref
 
-from lib.config import ConfigError
+from lib.config import ConfigError, env
 
 log = logging.getLogger(__name__)
 
-# Key-exchange group for each hop in the spec's communication table. The reader
-# and admin hops are pinned to classical X25519. The gateway -> cloud hop is
-# not pinned (None): its groups, the post-quantum hybrid X25519MLKEM768 with an
-# X25519 fallback, come from the OpenSSL config the gateway and cloud images
-# load through OPENSSL_CONF, because Python 3.13 can't set them per context
-# (see lib/README.md).
+# Key-exchange groups for each hop in the spec's communication table, as
+# OpenSSL group lists for SSLContext.set_groups(). The reader and admin hops
+# are pinned to classical X25519. The gateway -> cloud hop is chosen per
+# deployment with KEY_EXCHANGE: see gateway_cloud().
 READER_GATEWAY = 'X25519'
-GATEWAY_CLOUD = None
 ADMIN_CLOUD = 'X25519'
 
-# TLS 1.3 code points for reading the key share out of a ServerHello.
-_HANDSHAKE, _SERVER_HELLO, _KEY_SHARE = 22, 2, 51
-_GROUP_NAMES = {0x001D: 'X25519', 0x11EC: 'X25519MLKEM768'}
+# KEY_EXCHANGE -> the groups the gateway -> cloud hop offers and accepts. The *
+# makes a client send a key share for both groups in its first message, so a
+# classical peer costs no extra round trip (HelloRetryRequest).
+KEY_EXCHANGE_MODES = {
+    'hybrid': '*X25519MLKEM768:*X25519',  # post-quantum, classical fallback
+    'hybrid-only': 'X25519MLKEM768',  # refuses peers without ML-KEM
+    'classical': 'X25519',  # what software from before ML-KEM offers
+}
 
-# SSLObject/SSLSocket -> the group it negotiated, recorded by _record_group().
-_negotiated: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+# OpenSSL spells some groups in lower case (x25519); report the names above.
+_GROUP_NAMES = {name.lower(): name for name in ('X25519', 'X25519MLKEM768')}
 
 
-def server_context(cert: str, key: str, group: str | None) -> ssl.SSLContext:
+def gateway_cloud() -> str:
+    """The groups of the gateway -> cloud hop, from KEY_EXCHANGE (default hybrid)."""
+    if 'OPENSSL_CONF' in os.environ:
+        # The OpenSSL configs of Python 3.13 are gone, and OpenSSL silently
+        # ignores a missing config file: a leftover hybrid-only.cnf would
+        # quietly accept classical gateways.
+        raise ConfigError(
+            'OPENSSL_CONF is no longer used: set KEY_EXCHANGE to one of '
+            + ', '.join(KEY_EXCHANGE_MODES)
+        )
+    mode = env('KEY_EXCHANGE', 'hybrid')
+    if mode not in KEY_EXCHANGE_MODES:
+        raise ConfigError(
+            f'KEY_EXCHANGE must be one of {", ".join(KEY_EXCHANGE_MODES)}, not {mode!r}'
+        )
+    groups = KEY_EXCHANGE_MODES[mode]
+    log.info('gateway -> cloud key exchange: %s (%s)', mode, groups)
+    return groups
+
+
+def server_context(cert: str, key: str, groups: str) -> ssl.SSLContext:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert, key)
-    return _restrict(context, group)
+    return _restrict(context, groups)
 
 
-def client_context(ca: str, group: str | None) -> ssl.SSLContext:
-    return _restrict(ssl.create_default_context(cafile=ca), group)
+def client_context(ca: str, groups: str) -> ssl.SSLContext:
+    return _restrict(ssl.create_default_context(cafile=ca), groups)
 
 
 def negotiated_group(ssl_object: ssl.SSLObject | ssl.SSLSocket | None) -> str | None:
     """The key-exchange group of a TLS connection, or None if unknown."""
-    if ssl_object is None:
-        return None
-    if hasattr(ssl_object, 'group'):  # Python 3.15+
-        return ssl_object.group()
-    return _negotiated.get(ssl_object)
+    group = None if ssl_object is None else ssl_object.group()
+    return None if group is None else _GROUP_NAMES.get(group.lower(), group)
 
 
 def is_post_quantum(group: str | None) -> bool | None:
@@ -49,57 +67,9 @@ def is_post_quantum(group: str | None) -> bool | None:
     return None if group is None else 'MLKEM' in group.upper()
 
 
-def _restrict(context: ssl.SSLContext, group: str | None) -> ssl.SSLContext:
+def _restrict(context: ssl.SSLContext, groups: str) -> ssl.SSLContext:
     context.minimum_version = ssl.TLSVersion.TLSv1_3
-    if group is None:
-        _check_openssl_conf()
-    else:
-        # Offer and accept only this group, overriding the OpenSSL config.
-        # Without it OpenSSL >= 3.5 silently negotiates the hybrid
-        # X25519MLKEM768 whenever both ends support it.
-        context.set_ecdh_curve(group)
-    if not hasattr(ssl.SSLObject, 'group'):
-        # Python 3.13 can't report the negotiated group (SSLObject.group() is
-        # new in 3.15), so read it from the ServerHello through CPython's debug
-        # hook. To be removed with the move to 3.15 (see README.md).
-        context._msg_callback = _record_group  # pylint: disable=protected-access
+    # Offer and accept only these groups. Without it OpenSSL >= 3.5 silently
+    # negotiates the hybrid X25519MLKEM768 whenever both ends support it.
+    context.set_groups(groups)
     return context
-
-
-def _check_openssl_conf() -> None:
-    path = os.environ.get('OPENSSL_CONF')
-    if path is None:
-        log.warning('OPENSSL_CONF is not set: key exchange uses OpenSSL defaults')
-    elif not os.path.isfile(path):
-        # OpenSSL silently ignores a missing config file and uses its defaults.
-        raise ConfigError(f'OPENSSL_CONF file {path} does not exist')
-    else:
-        log.info('key exchange groups from %s', path)
-
-
-def _record_group(conn, _direction, _version, content_type, msg_type, data) -> None:
-    # Servers write the ServerHello and clients read it. The last one counts: a
-    # HelloRetryRequest is a ServerHello too.
-    if (content_type, msg_type) != (_HANDSHAKE, _SERVER_HELLO):
-        return
-    try:
-        _negotiated[conn] = _server_hello_group(data)
-    except Exception:  # pylint: disable=broad-exception-caught
-        # This runs inside OpenSSL's handshake: a status display must never be
-        # able to break a connection.
-        log.exception('could not read the key-exchange group')
-
-
-def _server_hello_group(server_hello: bytes) -> str:
-    """The group in the key_share extension of a ServerHello handshake message."""
-    # Handshake header (4), legacy_version (2), random (32), then the session ID.
-    pos = 38 + 1 + server_hello[38]
-    pos += 2 + 1 + 2  # cipher suite, compression method, extensions length
-    while pos < len(server_hello):
-        extension = int.from_bytes(server_hello[pos : pos + 2])
-        length = int.from_bytes(server_hello[pos + 2 : pos + 4])
-        if extension == _KEY_SHARE:
-            group = int.from_bytes(server_hello[pos + 4 : pos + 6])
-            return _GROUP_NAMES.get(group, f'0x{group:04x}')
-        pos += 4 + length
-    raise ValueError('ServerHello without key_share')

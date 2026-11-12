@@ -43,7 +43,7 @@ def scans_once_a_key_that_passes_is_scanned(stack, reader_id, since):
 def test_gateways_connect_with_the_key_exchange_they_support(stack):
     gateways = stack.api('gateways')
 
-    # gateway-2 stands in for a gateway without ML-KEM (classical.cnf).
+    # gateway-2 stands in for a gateway without ML-KEM (KEY_EXCHANGE=classical).
     assert {g['id']: (g['key_exchange'], g['post_quantum']) for g in gateways} == {
         'gw-1': ('X25519MLKEM768', True),
         'gw-2': ('X25519', False),

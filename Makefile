@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-PYTHON ?= python3.13
+PYTHON ?= python3.15
 VENV := venv
 VENV_BIN := $(VENV)/bin
 VENV_PYTHON := $(VENV_BIN)/python

@@ -37,7 +37,7 @@ def main():
     asyncio.run(
         serve_gateways(
             gateways,
-            tls.server_context(cert, key, tls.GATEWAY_CLOUD),
+            tls.server_context(cert, key, tls.gateway_cloud()),
             int(env('GATEWAY_PORT', '8443')),
         )
     )

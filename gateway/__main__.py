@@ -11,7 +11,7 @@ from lib.config import env, setup_logging
 async def run():
     ca = env('TLS_CA', '/certs/ca.pem')
     cloud = CloudLink(
-        f'wss://{env("CLOUD")}', env('ID'), tls.client_context(ca, tls.GATEWAY_CLOUD)
+        f'wss://{env("CLOUD")}', env('ID'), tls.client_context(ca, tls.gateway_cloud())
     )
     readers = ReaderHub(cloud)
     context = tls.server_context(
