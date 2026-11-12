@@ -88,7 +88,12 @@ def post_fixture(panel):
 
 @pytest.mark.parametrize(
     ('path', 'content_type'),
-    [('/', 'text/html'), ('/app.js', 'text/javascript'), ('/style.css', 'text/css')],
+    [
+        ('/', 'text/html'),
+        ('/app.js', 'text/javascript'),
+        ('/stakeholders.js', 'text/javascript'),
+        ('/style.css', 'text/css'),
+    ],
 )
 def test_serves_the_static_panel(get, path, content_type):
     status, received_type, body = get(path)
@@ -276,3 +281,21 @@ def test_https_still_works_after_plain_http_and_dropped_connections(panel, get):
     socket.create_connection(panel.host.split(':')).close()  # sends nothing
 
     assert get('/')[0] == 200
+
+
+def test_summary_api_reports_offline_seed_gateways(get):
+    status, content_type, body = get('/api/summary')
+
+    assert (status, content_type) == (200, 'application/json')
+    summary = json.loads(body)
+    # The seed's gw-1 and gw-2 are known, but no gateway is connected.
+    assert summary['gateways'] == {
+        'known': 2,
+        'connected': 0,
+        'hybrid': 0,
+        'classical': 0,
+        'unknown': 0,
+        'offline': 2,
+    }
+    assert summary['status'] == 'red'
+    assert summary['readers'] == 5

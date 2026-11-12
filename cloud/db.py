@@ -90,6 +90,12 @@ class Database:
         with self._connect() as conn:
             return [dict(row) for row in conn.execute(EVENTS, params)]
 
+    def gateway_ids(self) -> list[str]:
+        with self._connect() as conn:
+            return [
+                row['id'] for row in conn.execute('SELECT id FROM GATEWAYS ORDER BY id')
+            ]
+
     def readers(self) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
