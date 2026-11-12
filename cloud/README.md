@@ -56,7 +56,25 @@ logged.
 
 Open `https://localhost:8444`. The browser will warn about the certificate
 unless you trust `data/certs/ca.pem`. The panel is vanilla HTML/CSS/JS
-(`static/`) and refreshes every 5 s.
+(`static/`) and refreshes every 5 s. A refresh redraws only the parts whose
+data changed, so scroll positions, open or closed gateways, filters and text
+being typed stay as they are.
+
+The panel is laid out to stay usable with many readers and gateways (try
+`make run-scaled`, see the [root README](../README.md#scaled-stack-opt-in)):
+
+- Tiles at the top count the connected gateways (of all known), those on
+  classical key exchange, the readers and the keys.
+- A toolbar that stays at the top of the window filters the readers by
+  gateway and by reader ID or zone text. The filter applies to "Readers",
+  "Room access" and "Group rooms".
+- "Readers" lists them grouped by gateway, each group showing its reader count
+  and the gateway's connection state. Groups can be opened and closed; with
+  more than 20 readers they start closed, and a text search opens the groups
+  it matches in.
+- Wide or long tables scroll inside their own box, with the header rows and
+  the key or group column kept in view. The room columns of the matrices are
+  grouped under their gateway.
 
 "Connected gateways" shows the key exchange of each gateway's connection:
 post-quantum hybrid, or classical (in amber) for gateways without ML-KEM. A
