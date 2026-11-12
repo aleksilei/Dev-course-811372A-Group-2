@@ -12,6 +12,21 @@
       <span id="status">Loading…</span>
     </header>
 
+    <nav class="tabs" aria-label="Panel sections">
+      <a href="#operations" data-tab="operations">Operations</a>
+      <a href="#stakeholders" data-tab="stakeholders">Stakeholders</a>
+    </nav>
+
+    <main id="tab-stakeholders" hidden>
+      <nav class="views" aria-label="Stakeholder views">
+        <a href="#stakeholders/cio" data-view="cio">CIO</a>
+        <a href="#stakeholders/migration" data-view="migration">PQC migration</a>
+        <a href="#stakeholders/security" data-view="security">Security officer</a>
+      </nav>
+      <div id="view"></div>
+    </main>
+
+    <main id="tab-operations">
     <dl id="summary" class="summary"></dl>
 
     <form id="show" class="toolbar">
@@ -79,6 +94,9 @@
       </div>
     </section>
 
+    </main>
+
     <script src="/app.js"></script>
+    <script src="/stakeholders.js"></script>
   </body>
 </html>

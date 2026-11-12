@@ -171,3 +171,7 @@ def test_ids_are_stored_as_given(db):
 
     assert db.authorize(key, 'rd-1', 'gw-1') == 'pass'
     assert key in db.access()['keys']
+
+
+def test_gateway_ids_lists_the_seeded_gateways(db):
+    assert db.gateway_ids() == ['gw-1', 'gw-2']

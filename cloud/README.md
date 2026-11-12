@@ -60,7 +60,36 @@ unless you trust `data/certs/ca.pem`. The panel is vanilla HTML/CSS/JS
 data changed, so scroll positions, open or closed gateways, filters and text
 being typed stay as they are.
 
-The panel is laid out to stay usable with many readers and gateways (try
+The panel has two tabs, kept in the URL so a link opens the same place:
+**Operations** (`#operations`, the default) with everything below, and
+**Stakeholders** (`#stakeholders/<view>`) with a view per stakeholder of the
+post-quantum migration (persona cards, 811373A):
+
+| View | For | Shows |
+|---|---|---|
+| `cio` (default) | the CIO, and the key customer | green / amber / red status and the top three risks in plain language, without addresses or device names |
+| `migration` | the PQC migration project manager | the readiness score as one number, and the gateways blocking it |
+| `security` | the security officer | the quantum-vulnerable connections with the readers behind them and their share of recent traffic, what switching to `hybrid-only.cnf` would disconnect, and offline gateways. Never green while a classical connection remains |
+
+Each view ends with "Your concerns": what the dashboard addresses for that
+stakeholder, what it doesn't yet, and what it won't (policy decisions where
+the stakeholders disagree, such as when to turn off classical fallback). The
+views are drawn from `GET /api/summary` (`summary.py`), where the readiness
+score and status rules live:
+
+- **Readiness:** the share of connected gateways on post-quantum hybrid
+  (offline gateways are not counted).
+- **Status:** green when every known gateway is connected and on hybrid; red
+  when a gateway is offline or more than half of the connected ones are
+  classical; amber otherwise (including a key exchange the cloud couldn't
+  read).
+- "Recent traffic" is the newest 500 access events.
+
+The views are a presentation choice, not access control: the panel has no
+authentication, so the CIO view is safe to *show* a customer but the panel
+must not be exposed to one.
+
+The Operations tab is laid out to stay usable with many readers and gateways (try
 `make run-scaled`, see the [root README](../README.md#scaled-stack-opt-in)):
 
 - Tiles at the top count the connected gateways (of all known), those on
@@ -93,6 +122,7 @@ Readers, gateways and the groups themselves are edited through sqlite-web
 | Endpoint | Returns |
 |---|---|
 | `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown) and `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical) |
+| `GET /api/summary` | the stakeholder views' data: `readiness` (0–1, or `null` with nothing connected), `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `classical`, `unknown`, `offline`), the `classical`, `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
 | `GET /api/readers` | readers with their `gateway_id` and `zone_name` |
 | `GET /api/events?key=&reader=` | newest 100 access events, optionally filtered |
 | `GET /api/access` | `keys` (in a group or seen at a reader), `groups`, and the memberships `key_groups` (`key_uuid`, `group_id`) and `reader_groups` (`reader_id`, `group_id`) |

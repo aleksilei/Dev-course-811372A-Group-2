@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from cloud.db import Database
 from cloud.gateways import GatewayHub
+from cloud.summary import RECENT_EVENTS, summarize
 
 log = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ STATIC_DIR = Path(__file__).with_name('static')
 STATIC_FILES = {
     '/': ('index.html', 'text/html; charset=utf-8'),
     '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
+    '/stakeholders.js': ('stakeholders.js', 'text/javascript; charset=utf-8'),
     '/style.css': ('style.css', 'text/css; charset=utf-8'),
 }
 # POST path -> (field naming the member, Database setter)
@@ -94,6 +96,16 @@ class PanelHandler(BaseHTTPRequestHandler):
             self._send_json(self.server.db.access())
         elif url.path == '/api/gateways':
             self._send_json(self.server.gateways.connected())
+        elif url.path == '/api/summary':
+            db = self.server.db
+            self._send_json(
+                summarize(
+                    self.server.gateways.connected(),
+                    db.gateway_ids(),
+                    db.readers(),
+                    db.events(limit=RECENT_EVENTS),
+                )
+            )
         elif url.path in STATIC_FILES:
             name, content_type = STATIC_FILES[url.path]
             self._send(200, content_type, (STATIC_DIR / name).read_bytes())
