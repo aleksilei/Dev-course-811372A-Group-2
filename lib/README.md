@@ -10,6 +10,7 @@ into the dev venv by `make install`); it also pins the one runtime dependency,
 | `lib.tls` | `server_context()` / `client_context()` and the key-exchange group of each hop (the gateway → cloud groups are in the OpenSSL configs in `openssl/`). `negotiated_group()` / `is_post_quantum()` for what a connection negotiated. |
 | `lib.hub` | `Hub`: the server end of a WebSocket hop (see below). |
 | `lib.certs` | Dev CA and server certificates (`make certs`). |
+| `lib.topology` | The opt-in scaled stack (`make run-scaled`): writes a compose override with extra gateway sites, their certificates and the seed data into `data-scaled/`. Host-side only. See the [root README](../README.md#scaled-stack-opt-in). |
 
 ## TLS (`lib.tls`)
 

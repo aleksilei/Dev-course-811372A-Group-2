@@ -50,6 +50,31 @@ A database from before `gw-2`/`rd-5` were added doesn't know `rd-5`, so its
 scans fail until you delete `data/cloud/master.db` (or add the rows in
 sqlite-web).
 
+### Scaled stack (opt-in)
+
+For a more production-like number of devices, `make run-scaled` starts the
+default stack plus 10 more sites, each a gateway with 8 readers on a reader
+VLAN of its own (`10.10.<n>.0/24`, gateway at `10.10.<n>.10`). The last 2
+sites' gateways have no ML-KEM, like `gateway-2`. The size is set with make
+variables:
+
+```bash
+make run-scaled GATEWAYS=4 READERS=3 CLASSICAL=1
+```
+
+- Site `n` is gateway `gw-s<n>` with readers `rd-s<n>-1`, `rd-s<n>-2`, … in
+  zones `s<n>-front-door`, `s<n>-employee-door`, …, opened by the same groups
+  as the default stack's zones.
+- `lib.topology` writes the compose override, certificates and seed data into
+  `data-scaled/` (gitignored), so nothing scaled is committed and
+  `docker-compose.yml`, `make run` and `make e2e` are unchanged. Changing the
+  size starts the scaled database afresh; otherwise edits made in the panel
+  are kept, as in `data/`.
+- It uses the default stack's ports, so `make stop` first. Then
+  `make ps-scaled`, `make logs-scaled SERVICE=reader-s3-2`, and
+  `make stop-scaled`. The control panel's CA is `data-scaled/certs/ca.pem`.
+- Every device is its own container (about 100 at the default size).
+
 ## Repository layout
 
 | Path | |
