@@ -7,6 +7,10 @@ Run with `python -m cloud`. It serves two TLS listeners from one process:
 | 8443 | WSS (`websockets`, asyncio) | gateways, see [protocol](#gateway-protocol) |
 | 8444 | HTTPS (`http.server`, own thread) | admin control panel + its JSON API |
 
+Plain HTTP on port 8444 (`http://localhost:8444/...`) gets a `308` redirect to
+the same URL over HTTPS. The panel tells the two apart by the first byte the
+client sends (`0x16` starts a TLS handshake); a `308` keeps a POST a POST.
+
 ## Configuration
 
 | Variable | Default | |
