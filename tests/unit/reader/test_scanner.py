@@ -5,7 +5,8 @@ import logging
 import pytest
 from websockets.asyncio.server import serve
 
-from reader.scanner import GatewayClient, scan
+from reader.interval import ScanInterval
+from reader.scanner import GatewayClient, scan, scan_forever
 
 
 def gateway_passing(key_uuid):
@@ -107,3 +108,31 @@ async def test_scan_logs_the_outcome_and_unlocks_only_on_pass(caplog, granted, o
 
     assert f'{outcome} key=key-alice reader=rd-1 zone=front-door' in caplog.text
     assert ('UNLOCK front-door' in caplog.text) is granted
+
+
+class Stop(Exception):
+    pass
+
+
+async def test_scan_forever_waits_a_new_random_time_after_every_scan(monkeypatch):
+    waits = iter([2.5, 7.25, 4.0])
+    monkeypatch.setattr(ScanInterval, 'next', lambda self, rng=None: next(waits))
+    scans, slept = [], []
+
+    class CountingClient(StubClient):
+        async def authorize(self, key_uuid):
+            scans.append(key_uuid)
+            return True
+
+    async def sleep(seconds):
+        slept.append(seconds)
+        if len(slept) == 3:
+            raise Stop
+
+    with pytest.raises(Stop):
+        await scan_forever(
+            CountingClient(True), ['key-bob'], 'lab', ScanInterval(2, 8), sleep
+        )
+
+    assert scans == ['key-bob'] * 3
+    assert slept == [2.5, 7.25, 4.0]

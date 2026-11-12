@@ -1,10 +1,14 @@
 import asyncio
 import json
 import logging
+import random
 import ssl
+from collections.abc import Awaitable, Callable, Sequence
 
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import WebSocketException
+
+from reader.interval import ScanInterval
 
 log = logging.getLogger(__name__)
 
@@ -66,3 +70,16 @@ async def scan(client: GatewayClient, key_uuid: str, zone: str) -> bool:
     if granted:
         unlock(zone)
     return granted
+
+
+async def scan_forever(
+    client: GatewayClient,
+    keys: Sequence[str],
+    zone: str,
+    interval: ScanInterval,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> None:
+    """Scan a random key, wait interval.next() seconds, and repeat."""
+    while True:
+        await scan(client, random.choice(keys), zone)
+        await sleep(interval.next())

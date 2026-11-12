@@ -9,7 +9,9 @@ Writes into <out dir>, for `make run-scaled`:
 
 Site n is gateway gw-s<n> with readers rd-s<n>-1.. on a reader VLAN of its own,
 10.10.<n>.0/24, the gateway at 10.10.<n>.10. The last `classical` sites stand
-in for gateways without ML-KEM, like gateway-2 in the default stack.
+in for gateways without ML-KEM, like gateway-2 in the default stack. Sites
+take turns at the scan ranges in SITE_SCAN_INTERVALS, so some are much busier
+than others.
 
 When the topology changes, the certificates are made again and the scaled
 cloud database is deleted, so the cloud seeds itself with the new sites.
@@ -42,6 +44,11 @@ ZONES = [
     ('meeting-room', ['employees', 'executives']),
 ]
 
+# Seconds between a reader's scans (SCAN_INTERVAL_MIN, SCAN_INTERVAL_MAX), for
+# sites 1, 2, 3, 4, 5, ...: busy, normal (the default stack's 2-8 s), quiet,
+# very quiet, busy, ... On average 2, 5, 10 and 20 s.
+SITE_SCAN_INTERVALS = [(1, 3), (2, 8), (5, 15), (10, 30)]
+
 
 @dataclass(frozen=True)
 class Topology:
@@ -66,6 +73,10 @@ class Topology:
 
 def gateway_ip(site: int) -> str:
     return f'10.10.{site}.10'
+
+
+def scan_interval(site: int) -> tuple[int, int]:
+    return SITE_SCAN_INTERVALS[(site - 1) % len(SITE_SCAN_INTERVALS)]
 
 
 def zone(site: int, reader: int) -> tuple[str, list[str]]:
@@ -95,6 +106,7 @@ def compose(topology: Topology) -> dict:
     networks: dict[str, dict] = {}
     for n in topology.sites():
         network = f'site-{n}-vlan'
+        low, high = scan_interval(n)
         networks[network] = {
             'internal': True,
             'ipam': {'config': [{'subnet': f'10.10.{n}.0/24'}]},
@@ -124,7 +136,8 @@ def compose(topology: Topology) -> dict:
                     'ZONE': zone(n, r)[0],
                     'GATEWAY': f'{gateway_ip(n)}:{GATEWAY_PORT}',
                     'KEYS': 'key-alice,key-bob,key-carol,key-mallory',
-                    'SCAN_INTERVAL': '${SCAN_INTERVAL:-5}',
+                    'SCAN_INTERVAL_MIN': str(low),
+                    'SCAN_INTERVAL_MAX': str(high),
                 },
                 'volumes': [ca],
                 'networks': [network],
