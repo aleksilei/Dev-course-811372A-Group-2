@@ -88,7 +88,7 @@ services:
     environment:
       CLOUD: cloud:8443
       ID: gw-2
-      OPENSSL_CONF: /opt/lib/openssl/classical.cnf
+      KEY_EXCHANGE: classical
     volumes:
       - ${DATA_DIR:-./data}/certs/ca.pem:/certs/ca.pem:ro
       - ${DATA_DIR:-./data}/certs/gateway-2.pem:/certs/server.pem:ro
@@ -110,7 +110,7 @@ services:
       DB_PATH: /data/master.db
       # The image accepts hybrid X25519MLKEM768 and falls back to X25519.
       # Once every gateway is upgraded, refuse classical ones (gateway-2):
-      # OPENSSL_CONF: /opt/lib/openssl/hybrid-only.cnf
+      # KEY_EXCHANGE: hybrid-only
     volumes:
       - ${DATA_DIR:-./data}/cloud:/data
       - ${DATA_DIR:-./data}/certs/cloud.pem:/certs/server.pem:ro

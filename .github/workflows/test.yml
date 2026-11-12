@@ -15,7 +15,7 @@ jobs:
     # The base image of the Dockerfiles, with the OpenSSL >= 3.5 that the ML-KEM
     # tests need. The runner's own Python links OpenSSL 3.0, where pytest would
     # skip them.
-    container: python:3.13-slim
+    container: python:3.15-slim
     steps:
       - name: Install make
         run: apt-get update && apt-get install --yes --no-install-recommends make

@@ -19,7 +19,7 @@ client sends (`0x16` starts a TLS handshake); a `308` keeps a POST a POST.
 | `TLS_CERT` / `TLS_KEY` | `/certs/server.pem` / `/certs/server.key` | server certificate for both ports |
 | `GATEWAY_PORT` | `8443` | |
 | `PANEL_PORT` | `8444` | |
-| `OPENSSL_CONF` | `/opt/lib/openssl/hybrid.cnf` (image) | key exchange with gateways (port 8443 only): hybrid `X25519MLKEM768` with `X25519` fallback; `hybrid-only.cnf` refuses classical gateways, see [lib](../lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
+| `KEY_EXCHANGE` | `hybrid` | key exchange with gateways (port 8443 only): `hybrid` (`X25519MLKEM768` with `X25519` fallback), `hybrid-only` (refuses classical gateways) or `classical`; anything else, or a leftover `OPENSSL_CONF`, stops the cloud at startup. See [lib](../lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
 
 ## Gateway protocol
 
@@ -69,7 +69,7 @@ post-quantum migration (persona cards, 811373A):
 |---|---|---|
 | `cio` (default) | the CIO, and the key customer | green / amber / red status and the top three risks in plain language, without addresses or device names |
 | `migration` | the PQC migration project manager | the readiness score as one number, and the gateways blocking it |
-| `security` | the security officer | the quantum-vulnerable connections with the readers behind them and their share of recent traffic, what switching to `hybrid-only.cnf` would disconnect, and offline gateways. Never green while a classical connection remains |
+| `security` | the security officer | the quantum-vulnerable connections with the readers behind them and their share of recent traffic, what switching to `KEY_EXCHANGE=hybrid-only` would disconnect, and offline gateways. Never green while a classical connection remains |
 
 Each view ends with "Your concerns": what the dashboard addresses for that
 stakeholder, what it doesn't yet, and what it won't (policy decisions where
@@ -108,7 +108,7 @@ The Operations tab is laid out to stay usable with many readers and gateways (tr
 "Connected gateways" shows the key exchange of each gateway's connection:
 post-quantum hybrid, or classical (in amber) for gateways without ML-KEM. A
 line above the table counts the classical ones, which switching the cloud to
-`hybrid-only.cnf` would disconnect.
+`KEY_EXCHANGE=hybrid-only` would disconnect.
 
 The panel edits group memberships, which decide access: a key opens a reader
 when they share a group. "Room access" shows the result per key and reader.

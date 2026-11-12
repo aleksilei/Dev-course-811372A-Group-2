@@ -4,4 +4,4 @@
 services:
   cloud:
     environment:
-      OPENSSL_CONF: /opt/lib/openssl/hybrid-only.cnf
+      KEY_EXCHANGE: hybrid-only

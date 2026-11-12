@@ -114,7 +114,7 @@ class Stack:
 
     def probe(self, service: str, server: str) -> str:
         """The key-exchange group a TLS client in `service` negotiates with
-        `server` (host:port), offering whatever that container's OpenSSL offers."""
+        `server` (host:port), offering that container's KEY_EXCHANGE groups."""
         host, port = server.rsplit(':', 1)
         output = self.compose(
             'exec',

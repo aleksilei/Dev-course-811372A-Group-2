@@ -29,10 +29,8 @@ def test_every_site_gets_a_gateway_and_its_readers_on_their_own_vlan():
 def test_the_last_sites_are_classical():
     services = compose(SMALL)['services']
 
-    assert 'OPENSSL_CONF' not in services['gateway-s2']['environment']
-    assert services['gateway-s3']['environment']['OPENSSL_CONF'].endswith(
-        'classical.cnf'
-    )
+    assert 'KEY_EXCHANGE' not in services['gateway-s2']['environment']
+    assert services['gateway-s3']['environment']['KEY_EXCHANGE'] == 'classical'
 
 
 def test_zones_repeat_with_a_number_after_a_lap():

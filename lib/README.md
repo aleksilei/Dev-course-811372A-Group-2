@@ -7,32 +7,32 @@ into the dev venv by `make install`); it also pins the one runtime dependency,
 | Module | Contents |
 |---|---|
 | `lib.config` | `env(name, default=None)`: reads an environment variable; without a default it is required (`ConfigError`). `setup_logging()`. |
-| `lib.tls` | `server_context()` / `client_context()` and the key-exchange group of each hop (the gateway → cloud groups are in the OpenSSL configs in `openssl/`). `negotiated_group()` / `is_post_quantum()` for what a connection negotiated. |
+| `lib.tls` | `server_context()` / `client_context()` and the key-exchange groups of each hop (`gateway_cloud()` reads the gateway → cloud ones from `KEY_EXCHANGE`). `negotiated_group()` / `is_post_quantum()` for what a connection negotiated. |
 | `lib.hub` | `Hub`: the server end of a WebSocket hop (see below). |
 | `lib.certs` | Dev CA and server certificates (`make certs`). |
 | `lib.topology` | The opt-in scaled stack (`make run-scaled`): writes a compose override with extra gateway sites, their certificates and the seed data into `data-scaled/`. Host-side only. See the [root README](../README.md#scaled-stack-opt-in). |
 
 ## TLS (`lib.tls`)
 
-Every TLS context in the system comes from `server_context(cert, key, group)` or
-`client_context(ca, group)`. Both require TLS 1.3. Clients verify the server
-certificate against the dev CA; servers don't ask for client certificates (no
-mutual TLS, per the spec).
+Every TLS context in the system comes from `server_context(cert, key, groups)`
+or `client_context(ca, groups)`. Both require TLS 1.3 and offer and accept only
+`groups`, an OpenSSL group list set with `SSLContext.set_groups()` (Python
+3.15). Clients verify the server certificate against the dev CA; servers don't
+ask for client certificates (no mutual TLS, per the spec).
 
-The key-exchange group is chosen per hop, matching the spec's communication
+The key-exchange groups are chosen per hop, matching the spec's communication
 table:
 
-| Constant | Hop | Key exchange |
+| Groups | Hop | Key exchange |
 |---|---|---|
 | `READER_GATEWAY` | reader → gateway | `X25519`, pinned |
-| `GATEWAY_CLOUD` | gateway → cloud | `None`: hybrid `X25519MLKEM768` with `X25519` fallback, from the [OpenSSL config](#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
+| `gateway_cloud()` | gateway → cloud | from `KEY_EXCHANGE`, default hybrid `X25519MLKEM768` with `X25519` fallback: see [below](#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
 | `ADMIN_CLOUD` | browser → control panel | `X25519`, pinned |
 
-A pinned group is the only one the context offers or accepts. Pinning matters
-even for classical TLS: OpenSSL ≥ 3.5, which ships in the `python:3.13-slim`
-images, prefers the post-quantum hybrid `X25519MLKEM768` whenever both ends
-support it. The tests in `tests/unit/lib/test_tls.py` check that the server accepts,
-and the client offers, nothing but the pinned group.
+Pinning matters even for classical TLS: OpenSSL ≥ 3.5, which ships in the
+`python:3.15-slim` images, prefers the post-quantum hybrid `X25519MLKEM768`
+whenever both ends support it. The tests in `tests/unit/lib/test_tls.py` check
+that the server accepts, and the client offers, nothing but the pinned group.
 
 ### Gateway → cloud: ML-KEM hybrid with classical fallback
 
@@ -41,34 +41,32 @@ to classical `X25519` when the other end has no ML-KEM, so upgraded and older
 gateways and clouds keep working together. TLS negotiates the group during the
 handshake, so nothing above `lib.tls` changes.
 
-Python 3.13's `SSLContext.set_ecdh_curve()` only knows classical curves
-(`set_groups()` is new in Python 3.15), so this hop isn't pinned in code.
-Instead, the gateway and cloud images load one of the configs in
-[`openssl/`](openssl/) through the `OPENSSL_CONF` environment variable. The
-config applies to the whole process, but the pinned contexts above override it,
-so the reader port and the control panel stay classical.
+The gateway and the cloud read the mode from the `KEY_EXCHANGE` environment
+variable through `gateway_cloud()`, which logs it at startup:
 
-| `OPENSSL_CONF` | Offers and accepts | For |
+| `KEY_EXCHANGE` | Offers and accepts | For |
 |---|---|---|
-| `/opt/lib/openssl/hybrid.cnf` (image default) | `X25519MLKEM768`, falling back to `X25519` | a fleet where not everything is upgraded yet |
-| `/opt/lib/openssl/hybrid-only.cnf` | `X25519MLKEM768` only | once every gateway and the cloud are upgraded: classical peers are refused |
-| `/opt/lib/openssl/classical.cnf` | `X25519` only | what software from before ML-KEM does: rollback, and `gateway-2` in `docker-compose.yml` |
+| `hybrid` (default) | `X25519MLKEM768`, falling back to `X25519` | a fleet where not everything is upgraded yet |
+| `hybrid-only` | `X25519MLKEM768` only | once every gateway and the cloud are upgraded: classical peers are refused |
+| `classical` | `X25519` only | what software from before ML-KEM does: rollback, and `gateway-2` in `docker-compose.yml` |
 
-The group a gateway and the cloud end up with (`test_gateway_cloud_key_exchange`
-runs each pair in separate processes and reads the group from the ServerHello):
+The group a gateway and the cloud end up with (`test_gateway_cloud_key_exchange`):
 
-| Gateway ↓ / Cloud → | hybrid | hybrid-only | before ML-KEM |
+| Gateway ↓ / Cloud → | hybrid | hybrid-only | classical or before ML-KEM |
 |---|---|---|---|
 | hybrid | `X25519MLKEM768` | `X25519MLKEM768` | `X25519` |
 | hybrid-only | `X25519MLKEM768` | `X25519MLKEM768` | no connection |
 | classical or before ML-KEM | `X25519` | no connection | `X25519` |
 
-- Both ends need OpenSSL ≥ 3.5 for ML-KEM (the images have it). The configs set
-  `config_diagnostics = 1`, so a typo, or an OpenSSL without ML-KEM, stops the
-  process at startup instead of silently using OpenSSL's default groups.
-  `lib.tls` likewise refuses an `OPENSSL_CONF` file that doesn't exist (OpenSSL
-  would ignore it). Without `OPENSSL_CONF`, e.g. `python -m gateway` from the
-  venv, the hop uses OpenSSL's built-in group list and a warning is logged.
+- Any other `KEY_EXCHANGE` stops the process at startup (`ConfigError`), so a
+  typo can't weaken the key exchange. So does a leftover `OPENSSL_CONF` from
+  the Python 3.13 version, whose config files are gone: OpenSSL would silently
+  ignore the missing file, and a cloud meant to be hybrid-only would accept
+  classical gateways.
+- Both ends need OpenSSL ≥ 3.5 for ML-KEM (the images have it).
+- On the wire, `hybrid` is the same as the Python 3.13 version with
+  `hybrid.cnf`, and `classical` the same as `classical.cnf` or v1, so the
+  matrix holds for mixed fleets during an upgrade.
 - The `*` in `*X25519MLKEM768:*X25519` makes the client send a key share for
   both groups in its first message, so a classical cloud costs no extra round
   trip (HelloRetryRequest). The hybrid adds about 1.2 KB to each direction of
@@ -76,31 +74,24 @@ runs each pair in separate processes and reads the group from the ServerHello):
 - An attacker can't strip the hybrid group between two upgraded ends: the
   server signs the handshake transcript, which includes the groups the client
   offered. Connections that fall back to `X25519` can still be recorded now and
-  decrypted by a future quantum computer, which is what `hybrid-only.cnf` is
-  for. Certificates stay ECDSA P-256: ML-KEM protects confidentiality, not
+  decrypted by a future quantum computer, which is what `hybrid-only` is for.
+  Certificates stay ECDSA P-256: ML-KEM protects confidentiality, not
   authentication.
 
 ### Which group a connection negotiated
 
-`negotiated_group(ssl_object)` returns the group of a connection made from
-these contexts (e.g. `'X25519MLKEM768'`), or `None` if it isn't known, and
-`is_post_quantum(group)` says whether it includes ML-KEM. `Hub` lists it per
-client, the control panel shows it per gateway, and the gateway logs the one
-it got from the cloud. websockets exposes the `SSLObject` as
+`negotiated_group(ssl_object)` returns the group of a connection (e.g.
+`'X25519MLKEM768'`), or `None` before the handshake, and `is_post_quantum(group)`
+says whether it includes ML-KEM. `Hub` lists it per client, the control panel
+shows it per gateway, and the gateway logs the one it got from the cloud.
+websockets exposes the `SSLObject` as
 `ws.transport.get_extra_info('ssl_object')`.
 
-Python 3.13 has no API for this (`SSLObject.group()` is new in 3.15), so every
-context from `lib.tls` gets CPython's private debug hook,
-`SSLContext._msg_callback`, which sees each handshake message. `_record_group()`
-reads the group from the key_share extension of the ServerHello, which the
-server writes and the client reads, and keeps it per connection in a
-`WeakKeyDictionary` (entries go away with their connection). The hook runs
-inside OpenSSL's handshake, so it never raises: a ServerHello it can't read
-only makes the group `None`.
-
-The move to Python 3.15 replaces both workarounds, the OpenSSL configs and the
-debug hook, with public APIs: see
-[Next step: Python 3.15](../README.md#next-step-python-315).
+It is `SSLObject.group()` (Python 3.15), with one change: OpenSSL spells
+`x25519` in lower case but `X25519MLKEM768` in mixed case, so the groups of
+this system are reported as `X25519` and `X25519MLKEM768`, the names the
+control panel API has always used. Other groups are reported as OpenSSL
+spells them.
 
 ## `Hub`
 

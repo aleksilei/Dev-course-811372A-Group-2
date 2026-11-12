@@ -12,7 +12,7 @@ reader-5    --WSS--> gateway-2 --WSS, X25519 (legacy)-->        sqlite-web on 12
 
 ## Setup for local development
 
-Requires Python 3.13 (override with `make venv PYTHON=...`) and the OpenSSL 3
+Requires Python 3.15 (override with `make venv PYTHON=...`) and the OpenSSL 3
 command line tool (`openssl version` should report 3.x) for certificates.
 
 Create the python virtual environment
@@ -40,7 +40,7 @@ make run
 - Follow the readers deciding: `make logs SERVICE=reader-3`
 - `gateway-2` stands in for a gateway without ML-KEM (classical `X25519`
   only), with `reader-5` behind it. The cloud falls back to `X25519` for it;
-  uncomment the `hybrid-only.cnf` line in `docker-compose.yml` to see it
+  uncomment the `KEY_EXCHANGE: hybrid-only` line in `docker-compose.yml` to see it
   refused (and `reader-5` failing closed).
 - Stop: `make stop`
 
@@ -94,13 +94,13 @@ make run-scaled GATEWAYS=4 READERS=3 CLASSICAL=1
   `websockets` package.
 - **Post-quantum hybrid key exchange on the gateway → cloud hop.** TLS 1.3
   with `X25519MLKEM768`, falling back to classical `X25519` when the other end
-  has no ML-KEM, so upgraded and older gateways and clouds work together. Set
-  through an OpenSSL config (`OPENSSL_CONF`), because Python 3.13 can't set it
-  per connection; nothing above `lib.tls` changes. The reader and admin hops
-  stay on classical `X25519`. See [lib/README.md](lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback).
-- **The control panel shows the key exchange of each gateway**, read from the
-  TLS handshake through a CPython debug hook until the
-  [move to Python 3.15](#next-step-python-315) brings a public API for it.
+  has no ML-KEM, so upgraded and older gateways and clouds work together.
+  Chosen per deployment with `KEY_EXCHANGE` (`hybrid`, `hybrid-only` or
+  `classical`) and set per TLS context with Python 3.15's
+  `SSLContext.set_groups()`; nothing above `lib.tls` changes. The reader and
+  admin hops stay on classical `X25519`. See [lib/README.md](lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback).
+- **The control panel shows the key exchange of each gateway**, the group the
+  TLS connection negotiated (`SSLObject.group()`).
 - **Fail closed.** Any timeout, disconnect or malformed answer means no access.
 - Env vars beyond the spec (ports, certificate paths, `KEYS`, `SCAN_INTERVAL`,
   `DB_PATH`) all have defaults; see each component's README.
@@ -112,7 +112,7 @@ make run-scaled GATEWAYS=4 READERS=3 CLASSICAL=1
 - The reader → gateway hop has no post-quantum key exchange (per the spec).
 - Gateway → cloud connections that fall back to classical `X25519` (an end
   without ML-KEM) can be recorded now and decrypted by a future quantum
-  computer, until the cloud is switched to `hybrid-only.cnf`. The control
+  computer, until the cloud is switched to `KEY_EXCHANGE=hybrid-only`. The control
   panel lists which gateways those are.
 - Certificates are classical (ECDSA P-256) on every hop.
 - The control panel has no admin authentication.
@@ -120,42 +120,21 @@ make run-scaled GATEWAYS=4 READERS=3 CLASSICAL=1
 - No gateway or cloud response caching for redundancy: the cloud being down
   means every door stays closed.
 
-## Next step: Python 3.15
+## Python 3.15
 
-The ML-KEM version works around two things Python 3.13's `ssl` module can't
-do, both added in Python 3.15: setting the key-exchange groups of a context
-(`SSLContext.set_groups()`) and reporting the group a connection negotiated
-(`SSLObject.group()`). The workarounds are the process-wide OpenSSL configs in
-`lib/openssl/`, and a private CPython debug hook (`SSLContext._msg_callback`)
-that reads the group out of each ServerHello for the control panel and logs.
-Moving to 3.15 replaces both with public APIs. Nothing changes on the wire, so
-3.13 and 3.15 gateways and clouds work together during the rollout.
+The ML-KEM version first ran on Python 3.13, whose `ssl` module can neither
+set the key-exchange groups of a context nor report the group a connection
+negotiated. It worked around that with process-wide OpenSSL configs
+(`OPENSSL_CONF`) and a private CPython debug hook that read the group out of
+each ServerHello. Python 3.15 added public APIs for both,
+`SSLContext.set_groups()` and `SSLObject.group()`, and everything now runs on
+it (SCRUM-36); the workarounds are gone.
 
-Do it once `python:3.15-slim` is a final release (Docker Hub only had
-`3.15-rc-slim` in October 2026):
-
-1. **Runtime:** `FROM python:3.15-slim` in the three Dockerfiles,
-   `PYTHON ?= python3.15` in the `Makefile` and `requires-python = ">=3.15"`
-   in `lib/pyproject.toml`. Check that the pinned pylint and astroid support
-   3.15.
-2. **Groups per context:** `lib.tls._restrict()` calls
-   `context.set_groups(group)` instead of `set_ecdh_curve()`, and
-   `GATEWAY_CLOUD` becomes a group list read from an environment variable:
-   `*X25519MLKEM768:*X25519` (hybrid with fallback, the default),
-   `X25519MLKEM768` (hybrid only) or `X25519` (classical).
-3. **Remove the OpenSSL configs:** delete `lib/openssl/`,
-   `_check_openssl_conf()` and the `OPENSSL_CONF` lines in the gateway and
-   cloud Dockerfiles. In `docker-compose.yml`, `gateway-2` and the commented
-   hybrid-only switch of the cloud use the new environment variable.
-4. **Remove the debug hook:** delete `_record_group()`, `_server_hello_group()`
-   and `_negotiated` from `lib.tls`. `negotiated_group()` already uses
-   `SSLObject.group()` when it exists, so the control panel and the logs keep
-   working. Check how 3.15 spells the group names (OpenSSL writes `x25519` in
-   lower case); `is_post_quantum()` ignores case.
-5. **Tests:** with groups per context, the key-exchange matrix in
-   `tests/unit/lib/test_tls.py` no longer needs a process per peer, so
-   `tests/unit/lib/tls_peer.py` goes away and the matrix runs in-process.
-   The `_server_hello_group()` tests go with the debug hook.
+Nothing changed on the wire: a 3.15 gateway or cloud with `KEY_EXCHANGE=hybrid`
+offers the same groups as a 3.13 one with `hybrid.cnf`, so both versions work
+together during a rollout. Deployments that still set `OPENSSL_CONF` stop at
+startup with an error naming `KEY_EXCHANGE`, rather than silently falling back
+to OpenSSL's defaults (OpenSSL ignores a config file that no longer exists).
 
 ## Useful commands
 
@@ -208,7 +187,7 @@ GitHub Actions, in `.github/workflows/`:
 |---|---|---|
 | `pr.yml` | every pull request | `make lint` and `make test`, `make e2e`, and `can-merge`, which passes when both do |
 | `release.yml` | a `v*` tag | the same checks, then builds the images for amd64 and arm64, runs the e2e tests on the amd64 ones and pushes them to the GitHub container registry |
-| `test.yml` | called by both | lint and tests, in `python:3.13-slim`: its OpenSSL has ML-KEM, and the runner's doesn't (pytest would skip those tests) |
+| `test.yml` | called by both | lint and tests, in `python:3.15-slim`: its OpenSSL has ML-KEM, and the runner's doesn't (pytest would skip those tests) |
 
 **Merging.** A pull request may be merged once its `can-merge` check is green.
 GitHub doesn't enforce that here (a private repository on GitHub Free has no
