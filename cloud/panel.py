@@ -1,5 +1,6 @@
 import json
 import logging
+import socket
 import ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -22,6 +23,9 @@ MEMBERSHIPS = {
     '/api/reader-groups': ('reader', 'set_reader_group'),
 }
 MAX_BODY = 4096
+# First byte of a TLS connection (a handshake record). Anything else on the
+# panel port is taken as plain HTTP and redirected to HTTPS.
+TLS_HANDSHAKE = 0x16
 
 
 class BadRequest(Exception):
@@ -31,7 +35,10 @@ class BadRequest(Exception):
 
 
 class PanelServer(ThreadingHTTPServer):
-    """Admin control panel over HTTPS (no authentication, see README)."""
+    """Admin control panel over HTTPS (no authentication, see README).
+
+    Plain HTTP requests on the same port are redirected to HTTPS.
+    """
 
     daemon_threads = True
 
@@ -43,12 +50,31 @@ class PanelServer(ThreadingHTTPServer):
         gateways: GatewayHub,
     ) -> None:
         super().__init__(address, PanelHandler)
-        # The TLS handshake runs on first read, inside the per-request thread.
-        self.socket = context.wrap_socket(
-            self.socket, server_side=True, do_handshake_on_connect=False
-        )
+        self.context = context
         self.db = db
         self.gateways = gateways
+
+    def finish_request(self, request, client_address) -> None:
+        """Serve one connection, in its own thread: HTTPS, or a redirect to it."""
+        request.settimeout(PanelHandler.timeout)
+        try:
+            first = request.recv(1, socket.MSG_PEEK)
+            if not first:
+                return
+            if first[0] != TLS_HANDSHAKE:
+                RedirectHandler(request, client_address, self)
+                return
+            conn = self.context.wrap_socket(request, server_side=True)
+            try:
+                PanelHandler(conn, client_address, self)
+            finally:
+                # Half-close first, as for plain sockets: closing outright with
+                # an unread request body left would reset the connection
+                # before the client reads the response.
+                self.shutdown_request(conn)
+        except (OSError, ssl.SSLError) as error:
+            # Timeouts, failed handshakes and clients that hang up.
+            log.debug('panel connection from %s: %s', client_address[0], error)
 
 
 class PanelHandler(BaseHTTPRequestHandler):
@@ -144,3 +170,37 @@ class PanelHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+
+class RedirectHandler(BaseHTTPRequestHandler):
+    """Answers plain HTTP with a permanent redirect to the same URL over HTTPS."""
+
+    server: PanelServer
+    timeout = PanelHandler.timeout
+
+    def redirect(self) -> None:
+        host = self.headers.get('Host')
+        if not host:
+            self._send(400, b'Use HTTPS')
+            return
+        url = urlsplit(self.path)  # also handles absolute-form http://host/path
+        target = (url.path or '/') + (f'?{url.query}' if url.query else '')
+        # 308 rather than 301, so that a POST stays a POST.
+        self._send(308, b'', location=f'https://{host}{target}')
+
+    do_GET = do_HEAD = do_POST = do_PUT = do_PATCH = do_DELETE = do_OPTIONS = redirect
+
+    def _send(self, status: int, body: bytes, location: str | None = None) -> None:
+        self.send_response(status)
+        if location:
+            self.send_header('Location', location)
+        else:
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Connection', 'close')  # also ends the keep-alive loop
+        self.end_headers()
+        if self.command != 'HEAD':
+            self.wfile.write(body)
+
+    def log_message(self, format: str, *args) -> None:  # pylint: disable=redefined-builtin
+        log.debug(format, *args)

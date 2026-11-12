@@ -1,5 +1,6 @@
 import http.client
 import json
+import socket
 import threading
 import urllib.error
 import urllib.request
@@ -239,3 +240,39 @@ def test_refused_requests_change_nothing(panel, post, db, headers, status):
     assert post('/api/key-groups', GRANT, headers)[0] == status
 
     assert db.authorize('key-mallory', 'rd-1', 'gw-1') == 'fail'
+
+
+def _plain_http(panel, method, path, headers=None):
+    """Send one plain-HTTP (no TLS) request to the panel port."""
+    conn = http.client.HTTPConnection(panel.host, timeout=5)
+    try:
+        conn.request(method, path, headers=headers or {})
+        response = conn.getresponse()
+        return response.status, response.headers, response.read()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('method', ['GET', 'HEAD', 'POST'])
+@pytest.mark.parametrize('path', ['/', '/api/events?key=key-bob'])
+def test_plain_http_is_redirected_to_https(panel, method, path):
+    status, headers, body = _plain_http(panel, method, path)
+
+    assert status == 308
+    assert headers['Location'] == f'https://{panel.host}{path}'
+    assert body == b''
+
+
+def test_plain_http_without_host_is_rejected(panel):
+    with socket.create_connection(panel.host.split(':')) as conn:
+        conn.sendall(b'GET / HTTP/1.0\r\n\r\n')
+        response = conn.makefile('rb').read()
+
+    assert response.startswith(b'HTTP/1.0 400')
+
+
+def test_https_still_works_after_plain_http_and_dropped_connections(panel, get):
+    _plain_http(panel, 'GET', '/')
+    socket.create_connection(panel.host.split(':')).close()  # sends nothing
+
+    assert get('/')[0] == 200
