@@ -73,6 +73,9 @@ make run-scaled GATEWAYS=4 READERS=3 CLASSICAL=1
 - It uses the default stack's ports, so `make stop` first. Then
   `make ps-scaled`, `make logs-scaled SERVICE=reader-s3-2`, and
   `make stop-scaled`. The control panel's CA is `data-scaled/certs/ca.pem`.
+- Sites take turns being busy, normal, quiet and very quiet: their readers
+  wait 1-3, 2-8, 5-15 or 10-30 s between scans, so traffic per site differs
+  by up to 10x (see [reader/README.md](reader/README.md#scan-interval)).
 - Every device is its own container (about 100 at the default size).
 
 ## Repository layout
@@ -102,8 +105,9 @@ make run-scaled GATEWAYS=4 READERS=3 CLASSICAL=1
 - **The control panel shows the key exchange of each gateway**, the group the
   TLS connection negotiated (`SSLObject.group()`).
 - **Fail closed.** Any timeout, disconnect or malformed answer means no access.
-- Env vars beyond the spec (ports, certificate paths, `KEYS`, `SCAN_INTERVAL`,
-  `DB_PATH`) all have defaults; see each component's README.
+- Env vars beyond the spec (ports, certificate paths, `KEYS`,
+  `SCAN_INTERVAL_MIN`/`_MAX`, `DB_PATH`) all have defaults; see each
+  component's README.
 
 ## Acknowledged risks (out of scope)
 

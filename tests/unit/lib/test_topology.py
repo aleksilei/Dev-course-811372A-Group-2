@@ -8,6 +8,7 @@ import pytest
 from cloud import db as cloud_db
 from lib import topology
 from lib.topology import COMPOSE_FILE, ROOT, Topology, compose, servers, write
+from reader import interval
 
 SMALL = Topology(gateways=3, readers=10, classical=1)
 
@@ -38,6 +39,26 @@ def test_zones_repeat_with_a_number_after_a_lap():
 
     assert services['reader-s1-1']['environment']['ZONE'] == 's1-front-door'
     assert services['reader-s1-9']['environment']['ZONE'] == 's1-front-door-2'
+
+
+def test_sites_scan_at_different_rates():
+    services = compose(Topology(gateways=5, readers=2, classical=0))['services']
+
+    def interval_of(name):
+        return interval.from_env(services[name]['environment'])
+
+    ranges = [interval_of(f'reader-s{n}-1') for n in range(1, 6)]
+    assert [(r.low, r.high) for r in ranges] == [
+        (1, 3),
+        (2, 8),
+        (5, 15),
+        (10, 30),
+        (1, 3),
+    ]
+    # Readers of one site share their site's range.
+    assert interval_of('reader-s3-2') == ranges[2]
+    # The busiest sites make several times the traffic of the quietest.
+    assert (ranges[3].low + ranges[3].high) / (ranges[0].low + ranges[0].high) == 10
 
 
 def test_every_site_gateway_gets_a_certificate_for_its_ip():
