@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
 from cloud.db import Database
+from cloud.devices import devices
 from cloud.gateways import GatewayHub
 from cloud.summary import TRAFFIC_WINDOW, summarize
 
@@ -95,6 +96,16 @@ class PanelHandler(BaseHTTPRequestHandler):
             self._send_json(self.server.db.readers())
         elif url.path == '/api/access':
             self._send_json(self.server.db.access())
+        elif url.path == '/api/devices':
+            db = self.server.db
+            self._send_json(
+                devices(
+                    self.server.gateways.connected(),
+                    db.gateway_ids(),
+                    db.readers(),
+                    self.connection,
+                )
+            )
         elif url.path == '/api/gateways':
             self._send_json(self.server.gateways.connected())
         elif url.path == '/api/summary':

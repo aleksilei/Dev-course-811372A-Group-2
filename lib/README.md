@@ -82,7 +82,9 @@ The group a gateway and the cloud end up with (`test_gateway_cloud_key_exchange`
 
 `negotiated_group(ssl_object)` returns the group of a connection (e.g.
 `'X25519MLKEM768'`), or `None` before the handshake, and `is_post_quantum(group)`
-says whether it includes ML-KEM. `Hub` lists it per client, the control panel
+says whether it includes ML-KEM. `link_details(ssl_object)` returns it together
+with the TLS version and cipher suite (`tls_version`, `cipher`,
+`key_exchange`), each `None` if unknown. `Hub` lists it per client, the control panel
 shows it per gateway, and the gateway logs the one it got from the cloud.
 websockets exposes the `SSLObject` as
 `ws.transport.get_extra_info('ssl_object')`.
@@ -101,8 +103,9 @@ sets `id_header` (the handshake header naming the client, e.g. `Gateway-Id`)
 and implements `async respond(request, client_id) -> reply`. `Hub.handle` is the
 `websockets` connection handler: it registers the client, answers every JSON
 message with `respond()` (malformed JSON gets `{"result": "fail"}`), and lists
-live clients through `connected()`, with the key-exchange group each one
-negotiated. The ID is taken on trust. A subclass can override `changed()`,
+live clients through `connected()`, with the TLS version, cipher suite and
+key-exchange group each one negotiated (read on the event loop when the client
+connects, since `connected()` is also called from other threads). The ID is taken on trust. A subclass can override `changed()`,
 called on the event loop whenever a client connects or disconnects: the
 gateway uses it to report its readers to the cloud, and the cloud to forget
 the readers of a gateway that disconnected.

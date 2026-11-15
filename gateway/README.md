@@ -26,7 +26,8 @@ Run with `python -m gateway`. It's a stateless relay: WSS server for readers
   back to the waiting reader by that ID, so replies may arrive in any order.
   After a lost or failed connection it retries every 3 s.
 - **Connected readers:** the gateway tells the cloud which readers are
-  connected to it (ID, address, connected since, key exchange) whenever one
+  connected to it (ID, address, connected since, and the TLS version, cipher
+  suite and key exchange of its connection) whenever one
   connects or disconnects, and again after every reconnect to the cloud. Only
   the latest list is sent. A cloud from before this feature answers `fail`,
   which is only logged. The control panel shows the lists.
@@ -43,7 +44,8 @@ Run with `python -m gateway`. It's a stateless relay: WSS server for readers
 {"result": "pass"}
 // gateway -> cloud, on every change in its connected readers
 {"type": "readers", "request_id": "…", "readers": [
-  {"id": "rd-3", "address": "10.10.0.4", "since": "2026-11-15T12:00:00+00:00", "key_exchange": "X25519"}
+  {"id": "rd-3", "address": "10.10.0.4", "since": "2026-11-15T12:00:00+00:00",
+   "tls_version": "TLSv1.3", "cipher": "TLS_AES_256_GCM_SHA384", "key_exchange": "X25519"}
 ]}
 // cloud -> gateway
 {"request_id": "…", "result": "ok"}

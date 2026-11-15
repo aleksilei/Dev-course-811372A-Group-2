@@ -42,7 +42,11 @@ class FakeConnection:
         self.remote_address = ('10.0.0.5', 50000)
         # A plain connection, or TLS with an SSLObject that reports its group
         # like Python 3.15's does.
-        ssl_object = group and SimpleNamespace(group=lambda: group)
+        ssl_object = group and SimpleNamespace(
+            group=lambda: group,
+            version=lambda: 'TLSv1.3',
+            cipher=lambda: ('TLS_AES_256_GCM_SHA384', 'TLSv1.3', 256),
+        )
         self.transport = SimpleNamespace(get_extra_info={'ssl_object': ssl_object}.get)
         self.messages = messages
         self.sent = []
@@ -129,6 +133,8 @@ async def test_client_is_listed_only_while_connected():
                 'id': 'rd-1',
                 'address': '10.0.0.5',
                 'since': ANY,
+                'tls_version': None,
+                'cipher': None,
                 'key_exchange': None,
                 'post_quantum': None,
             }
@@ -144,6 +150,10 @@ async def test_lists_the_key_exchange_of_each_client():
 
     [listed] = hub.connected_during_request[0]
     assert (listed['key_exchange'], listed['post_quantum']) == ('X25519MLKEM768', True)
+    assert (listed['tls_version'], listed['cipher']) == (
+        'TLSv1.3',
+        'TLS_AES_256_GCM_SHA384',
+    )
 
 
 async def test_reconnected_client_stays_listed_when_its_old_connection_closes(
@@ -242,3 +252,5 @@ async def test_over_tls_lists_the_negotiated_group(certs):
 
     [listed] = hub.connected_during_request[0]
     assert (listed['key_exchange'], listed['post_quantum']) == ('X25519', False)
+    assert listed['tls_version'] == 'TLSv1.3'
+    assert listed['cipher'].startswith('TLS_')

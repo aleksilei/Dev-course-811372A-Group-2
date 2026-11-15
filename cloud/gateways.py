@@ -8,7 +8,7 @@ from lib.hub import Hub
 log = logging.getLogger(__name__)
 
 # The fields kept of each reader a gateway reports, and at most how many.
-READER_FIELDS = ('id', 'address', 'since', 'key_exchange')
+READER_FIELDS = ('id', 'address', 'since', 'tls_version', 'cipher', 'key_exchange')
 MAX_READERS = 1000
 
 
