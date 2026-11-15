@@ -19,6 +19,7 @@ class Hub:
     Keeps every connected client in memory, keyed by the ID it sends in the
     `id_header` handshake header, and answers each JSON request with the reply
     from respond(). The ID is taken on trust: clients are not authenticated.
+    changed() is called whenever a client connects or disconnects.
     """
 
     id_header = 'Client-Id'
@@ -49,6 +50,7 @@ class Hub:
         group = tls.negotiated_group(ws.transport.get_extra_info('ssl_object'))
         with self._lock:
             self._clients[client_id] = (ws, since, group)
+        self.changed()
         log.info(
             '%s connected from %s, key exchange %s',
             client_id,
@@ -62,12 +64,18 @@ class Hub:
             pass
         finally:
             with self._lock:
-                if self._clients.get(client_id, (None,))[0] is ws:
+                removed = self._clients.get(client_id, (None,))[0] is ws
+                if removed:
                     del self._clients[client_id]
+            if removed:
+                self.changed()
             log.info('%s disconnected', client_id)
 
     async def respond(self, request: dict, client_id: str) -> dict:
         raise NotImplementedError
+
+    def changed(self) -> None:
+        """Called on the event loop after a client connected or disconnected."""
 
     async def _reply(self, message: str | bytes, client_id: str) -> dict:
         try:

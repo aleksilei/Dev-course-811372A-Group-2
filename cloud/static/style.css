@@ -224,6 +224,10 @@ input {
   font-weight: 600;
 }
 
+.unknown {
+  color: var(--muted);
+}
+
 .hint {
   margin-top: -0.5rem;
   color: var(--muted);
