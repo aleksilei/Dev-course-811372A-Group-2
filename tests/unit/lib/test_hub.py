@@ -8,6 +8,7 @@ from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosedError
 
+from cloud.gateways import GatewayHub
 from lib import tls
 from lib.hub import Hub
 
@@ -65,6 +66,34 @@ class HangingUpConnection(FakeConnection):
 
     async def send(self, message):
         raise ConnectionClosedError(None, None)
+
+
+async def test_gateway_logs_each_connections_group_during_overlapping_reconnect(db):
+    release = asyncio.Event()
+
+    class DelayedConnection(FakeConnection):
+        async def __aiter__(self):
+            await release.wait()
+            async for message in super().__aiter__():
+                yield message
+
+    hub = GatewayHub(db)
+    headers = {'Gateway-Id': 'gw-1'}
+    messages = ['{"id": "key-alice", "reader_id": "rd-1"}']
+    old = asyncio.create_task(
+        hub.handle(DelayedConnection(headers, messages, 'X25519'))
+    )
+    await asyncio.sleep(0)
+    await hub.handle(FakeConnection(headers, messages, 'X25519MLKEM768'))
+    release.set()
+    await old
+
+    counts = db.event_counts_since('2000-01-01', '2100-01-01')
+    assert {row['key_exchange']: row['count'] for row in counts} == {
+        'X25519': 1,
+        'X25519MLKEM768': 1,
+    }
+    assert hub.request_key_exchange() is None
 
 
 async def test_answers_every_request_with_respond():
