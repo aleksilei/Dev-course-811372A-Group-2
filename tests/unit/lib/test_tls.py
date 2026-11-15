@@ -204,3 +204,30 @@ def test_client_offers_only_its_group(certs, client):
 )
 def test_is_post_quantum(group, post_quantum):
     assert tls.is_post_quantum(group) is post_quantum
+
+
+def test_link_details_of_a_real_connection(server, client):
+    details = []
+    original = server.wrap_socket
+
+    def wrap_and_record(*args, **kwargs):
+        conn = original(*args, **kwargs)
+        details.append(tls.link_details(conn))
+        return conn
+
+    server.wrap_socket = wrap_and_record
+    handshake(server, client)
+
+    assert len(details) == 1
+    listed = details[0]
+    assert listed['tls_version'] == 'TLSv1.3'
+    assert listed['cipher'].startswith('TLS_')
+    assert listed['key_exchange'] == 'X25519'
+
+
+def test_link_details_without_tls_are_unknown():
+    assert tls.link_details(None) == {
+        'tls_version': None,
+        'cipher': None,
+        'key_exchange': None,
+    }

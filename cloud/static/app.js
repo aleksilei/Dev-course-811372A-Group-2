@@ -145,56 +145,48 @@ function shownReaders(readers) {
   ));
 }
 
-// Reader ID -> its connection, from the reader lists the gateways report.
-function readerConnections(gateways) {
-  const connections = new Map();
-  for (const gateway of gateways) {
-    for (const reader of gateway.readers ?? []) {
-      connections.set(reader.id, { ...reader, via: gateway.id });
+// A device's connection as both the Readers list and the security officer's
+// device list show it, from its /api/devices row: {text, className, title}.
+// /api/devices decides the state; this only words it.
+function connectionLabel(device) {
+  if (device.state === 'connected') {
+    const elsewhere = Boolean(device.registered_gateway)
+      && device.registered_gateway !== device.gateway;
+    let text = elsewhere
+      ? `connected via ${device.gateway} since ${device.since ?? '?'}`
+      : `connected since ${device.since ?? '?'}`;
+    if (!device.registered) {
+      text += device.type === 'reader' ? ', not registered: its scans fail' : ', not registered';
     }
-  }
-  return connections;
-}
-
-// How a reader's connection is shown: {connection, connection_class, ...}.
-function connectionOf(reader, connections, connected) {
-  const connection = connections.get(reader.id);
-  if (connection) {
-    const elsewhere = connection.via !== reader.gateway_id;
-    let text = `connected since ${connection.since ?? '?'}`;
-    if (reader.unregistered) text += ', not registered: its scans fail';
-    else if (elsewhere) text = `connected via ${connection.via} since ${connection.since ?? '?'}`;
     return {
-      connected: true,
-      connection: text,
-      connection_class: reader.unregistered || elsewhere ? 'warn' : 'pass',
-      connection_title: `from ${connection.address ?? '?'}, key exchange ${connection.key_exchange ?? '?'}`,
+      text,
+      className: elsewhere || !device.registered ? 'warn' : 'pass',
+      title: `from ${device.address ?? '?'}, key exchange ${device.links[0]?.key_exchange ?? '?'}`,
     };
   }
-  const gateway = connected.get(reader.gateway_id);
-  if (gateway?.readers) {
-    return { connected: false, connection: 'not connected', connection_class: 'fail' };
-  }
-  return {
-    connected: false,
-    connection: gateway
-      ? "unknown: gateway doesn't report its readers"
-      : 'unknown: gateway not connected',
-    connection_class: 'unknown',
-  };
+  if (device.state === 'unknown') return { text: 'unknown', className: 'unknown' };
+  return { text: device.state, className: 'fail' }; // not connected, offline
 }
 
-// The registered readers, and the connected ones the database doesn't know
-// (under the gateway they're connected to), each with its connection.
-function readerRows(readers, connections, connected) {
-  const registered = new Set(readers.map((reader) => reader.id));
-  const unregistered = [...connections.values()]
-    .filter((connection) => !registered.has(connection.id))
-    .map((connection) => ({
-      id: connection.id, gateway_id: connection.via, zone_name: null, unregistered: true,
-    }));
-  return [...readers, ...unregistered]
-    .map((reader) => ({ ...reader, ...connectionOf(reader, connections, connected) }))
+// The Readers list: every reader /api/devices lists, under the gateway the
+// database puts it (an unregistered one under the gateway it's connected to).
+function readerRows(devices) {
+  return devices.devices
+    .filter((device) => device.type === 'reader')
+    .map((device) => {
+      const label = connectionLabel(device);
+      return {
+        id: device.id,
+        gateway_id: device.registered_gateway ?? device.gateway,
+        zone_name: device.zone_name,
+        unregistered: !device.registered,
+        connected: device.state === 'connected',
+        known: device.state !== 'unknown',
+        connection: label.text,
+        connection_class: label.className,
+        connection_title: label.title,
+      };
+    })
     .sort((a, b) => byId(a.gateway_id ?? '', b.gateway_id ?? '') || byId(a.id, b.id));
 }
 
@@ -220,7 +212,7 @@ function fillReaders(readers, totalReaders, connected) {
     const count = document.createElement('span');
     count.className = 'count';
     const readers = `${members.length} reader${members.length === 1 ? '' : 's'}`;
-    count.textContent = gateway?.readers
+    count.textContent = members.some((member) => member.known)
       ? `${members.filter((member) => member.connected).length} of ${readers} connected`
       : readers;
     summary.append(name, count, state);
@@ -368,7 +360,7 @@ function draw() {
   const { gateways, events, access, connections } = latest;
   const connected = new Map(gateways.map((gateway) => [gateway.id, gateway]));
   // Registered readers, plus connected ones the database doesn't know.
-  const rows = readerRows(latest.readers, readerConnections(gateways), connected);
+  const rows = readerRows(latest.devices);
   const gatewayIds = [...new Set([
     ...rows.map((reader) => reader.gateway_id).filter(Boolean), ...connected.keys(),
   ])].sort(byId);
@@ -414,14 +406,14 @@ async function refresh() {
   if (selectedGateway) connectionFilter.set('gateway', selectedGateway);
   const onLogsTab = window.location.hash === '#logs';
   try {
-    const [gateways, readers, events, access, connections] = await Promise.all([
+    const [gateways, devices, events, access, connections] = await Promise.all([
       getJSON('/api/gateways'),
-      getJSON('/api/readers'),
+      getJSON('/api/devices'),
       getJSON(`/api/events?${filter}`),
       getJSON('/api/access'),
       onLogsTab ? getJSON(`/api/connections?${connectionFilter}`) : Promise.resolve([]),
     ]);
-    latest = { gateways, readers, events, access, connections };
+    latest = { gateways, devices, events, access, connections };
     draw();
     $('status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {

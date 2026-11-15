@@ -73,8 +73,8 @@ post-quantum migration (persona cards, 811373A):
 | View | For | Shows |
 |---|---|---|
 | `cio` (default) | the CIO, and the key customer | green / amber / red status and the top three risks in plain language, without addresses or device names |
-| `migration` | the PQC migration project manager | the readiness score as one number, and the gateways blocking it |
-| `security` | the security officer | the quantum-vulnerable connections with the readers behind them and their share of recent traffic, what switching to `KEY_EXCHANGE=hybrid-only` would disconnect, and offline gateways. Never green while a classical connection remains |
+| `migration` | the PQC migration project manager | traffic-weighted PQC readiness, gateway coverage, and the gateways blocking it |
+| `security` | the security officer | the quantum-vulnerable connections with the readers behind them and their share of last-hour traffic, what switching to `KEY_EXCHANGE=hybrid-only` would disconnect, offline gateways, and the encryption status of every device (see below). Never green while a classical connection remains |
 
 Each view ends with "Your concerns": what the dashboard addresses for that
 stakeholder, what it doesn't yet, and what it won't (policy decisions where
@@ -82,13 +82,39 @@ the stakeholders disagree, such as when to turn off classical fallback). The
 views are drawn from `GET /api/summary` (`summary.py`), where the readiness
 score and status rules live:
 
-- **Readiness:** the share of connected gateways on post-quantum hybrid
-  (offline gateways are not counted).
+- **PQC traffic readiness:** the share of access events in the last hour recorded
+  with post-quantum hybrid key exchange on the gateway-to-cloud connection.
+  Unknown key exchange (including older events without a recorded group) counts as non-PQC;
+  no events in the window means the score is unavailable (`null`).
+  Each event keeps its connection's negotiated group, so reconnecting, upgrading
+  or disconnecting a gateway does not change the classification of earlier traffic.
+  Existing databases are upgraded automatically without deleting access history.
+- **Gateway coverage:** the share of connected gateways confirmed to use
+  post-quantum hybrid key exchange (offline gateways are not counted).
 - **Status:** green when every known gateway is connected and on hybrid; red
   when a gateway is offline or more than half of the connected ones are
   classical; amber otherwise (including a key exchange the cloud couldn't
   read).
-- "Recent traffic" is the newest 500 access events.
+- Traffic scores use access events from the rolling last hour. The security
+  officer view shows the non-PQC share alongside the per-gateway breakdown.
+
+The security officer view ends with the **encryption status of every
+device** (`GET /api/devices`, `devices.py`): each registered or connected
+gateway and reader, with the TLS version, cipher suite and key exchange of its
+own link and, for a reader, of its gateway's link to the cloud. Counts per
+status sit above the table, and a line below gives the panel's own link (the
+browser's connection to the panel). A device's status is its weakest link:
+
+- `post-quantum`: every link is a post-quantum hybrid;
+- `classical`: some link is classical. Every reader is, because the reader →
+  gateway hop is classical by the spec;
+- `unknown`: a key exchange the cloud couldn't read, an unregistered device
+  (its links are still shown), or a reader behind a gateway that is offline or
+  doesn't report its readers;
+- `offline`: a gateway that isn't connected, or a reader its reporting gateway
+  doesn't list.
+
+Nothing the cloud can't confirm is shown as encrypted.
 
 The views are a presentation choice, not access control: the panel has no
 authentication, so the CIO view is safe to *show* a customer but the panel
@@ -113,17 +139,17 @@ The Operations tab is laid out to stay usable with many readers and gateways (tr
   readers are connected and the gateway's connection state. Groups can be
   opened and closed; with more than 20 readers they start closed, and a text
   search opens the groups it matches in.
-- Each reader's **Connection**, as its gateway reports it (hover for the
-  address and key exchange):
+- Each reader's **Connection**, from `/api/devices` (hover for the address
+  and key exchange), worded the same as in the security officer's device
+  list:
   - `connected since …` (green);
   - `connected via gw-X since …` (amber): connected through another gateway
     than the database says;
-  - `not registered: its scans fail` (amber): connected, but not in the
+  - `…, not registered: its scans fail` (amber): connected, but not in the
     database. Listed under the gateway it's connected to, and left out of
     the matrices;
-  - `not connected` (red);
-  - `unknown` (grey): its gateway isn't connected, or is from before reader
-    lists and doesn't report them.
+  - `not connected` (red): its gateway reports it isn't;
+  - `unknown` (grey): its gateway is offline, or doesn't report its readers.
 
   Reader IDs are taken on trust, like gateway IDs. Reader connections are live
   reports from gateways; only gateway-to-cloud sessions are kept as history.
@@ -147,9 +173,10 @@ Readers, gateways and the groups themselves are edited through sqlite-web
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical) and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `key_exchange`, `post_quantum`), or `null` if the gateway hasn't reported them |
+| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical), `tls_version` and `cipher` of the connection, and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`), or `null` if the gateway hasn't reported them |
+| `GET /api/devices` | every gateway and reader: `statuses`, `counts` per type (`gateway`, `reader`) and status, `devices` (`id`, `type`, `gateway`, `registered`, `state`, `status`, `address` and `since` of its connection, for readers `registered_gateway` and `zone_name` from the database, and `links`: each `name`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`; a reader's own link first, then its gateway's) and `panel`, the request's own link |
 | `GET /api/connections?gateway=` | gateway-to-cloud connection history, newest first, optionally filtered by gateway; each row has `gateway_id`, `address`, `key_exchange`, `post_quantum`, `connected_at` and `disconnected_at` (null while connected) |
-| `GET /api/summary` | the stakeholder views' data: `readiness` (0–1, or `null` with nothing connected), `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `classical`, `unknown`, `offline`), the `classical`, `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
+| `GET /api/summary` | the stakeholder views' data: `readiness` (traffic weighted, 0–1 or `null` with no recent events), `gateway_coverage` (0–1 or `null` with no connected gateways), `non_pqc_traffic_share`, `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `classical`, `unknown`, `offline`), the `classical`, `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` (events in the last hour) and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
 | `GET /api/readers` | readers with their `gateway_id` and `zone_name` |
 | `GET /api/events?key=&reader=` | newest 100 access events, optionally filtered |
 | `GET /api/access` | `keys` (in a group or seen at a reader), `groups`, and the memberships `key_groups` (`key_uuid`, `group_id`) and `reader_groups` (`reader_id`, `group_id`) |

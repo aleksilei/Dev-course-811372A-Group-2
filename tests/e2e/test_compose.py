@@ -117,6 +117,39 @@ def test_each_gateway_reports_the_readers_connected_to_it(stack):
     }
 
 
+def test_every_device_reports_tls_1_3_and_its_key_exchange(stack):
+    # gateway-1 has ML-KEM, gateway-2 doesn't; every reader hop is classical.
+    expected_groups = {
+        ('gateway', 'gw-1'): ['X25519MLKEM768'],
+        ('gateway', 'gw-2'): ['X25519'],
+    }
+    for reader_id, (_, _, gateway) in READERS.items():
+        expected_groups['reader', reader_id] = [
+            'X25519',
+            'X25519MLKEM768' if gateway == 'gw-1' else 'X25519',
+        ]
+
+    def all_connected():
+        result = stack.api('devices')
+        rows = result['devices']
+        connected = all(row['state'] == 'connected' for row in rows)
+        return result if connected and len(rows) == len(expected_groups) else None
+
+    result = wait_for(all_connected, 'every device connected')
+
+    rows = {(row['type'], row['id']): row for row in result['devices']}
+    assert {
+        key: [link['key_exchange'] for link in row['links']]
+        for key, row in rows.items()
+    } == expected_groups
+    links = [link for row in rows.values() for link in row['links']]
+    assert {link['tls_version'] for link in links} == {'TLSv1.3'}
+    assert all(link['cipher'].startswith('TLS_') for link in links)
+    assert rows['gateway', 'gw-1']['status'] == 'post-quantum'
+    assert result['counts']['reader']['classical'] == len(READERS)
+    assert result['panel']['tls_version'] == 'TLSv1.3'
+
+
 @pytest.mark.parametrize(
     ('client', 'server', 'group'),
     [

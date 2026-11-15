@@ -19,6 +19,7 @@ Requires:
 - the OpenSSL 3 command line tool (`openssl version` should report 3.x), for
   the dev certificates
 - Docker with Compose, for `make run` and `make e2e`
+- Node.js 20 or newer, for the control panel's JavaScript tests in `make test`
 
 Create the virtual environment and install the dependencies:
 ```bash
@@ -68,7 +69,7 @@ when done. Device names, where its data lives and each site's traffic: see
 | `reader/`, `gateway/`, `cloud/` | one package + Dockerfile + README per component, run as `python -m <component>` |
 | `lib/` | shared code: env config, TLS contexts, WebSocket hub, certificates, the scaled stack |
 | `docs/` | the spec and architecture diagram, [CI/CD details](docs/ci.md), and the AI-usage records in `docs/ai/` |
-| `tests/unit/<component>/` | unit tests, one directory per component |
+| `tests/unit/<component>/` | unit tests, one directory per component; the panel's JavaScript tests in `tests/unit/cloud/static/` |
 | `tests/integration/` | integration tests: readers → gateway → cloud in one process, over real TLS |
 | `tests/e2e/` | end-to-end tests: the docker-compose deployment, from the built images |
 | `.github/workflows/` | [CI/CD](#cicd): checks on every pull request, image releases on `v*` tags |
@@ -101,6 +102,8 @@ when done. Device names, where its data lives and each site's traffic: see
 - Certificates are classical (ECDSA P-256) on every hop.
 - The control panel has no admin authentication.
 - Physical access to the reader VLAN is assumed to be safe.
+- Data at rest: the SQLite database (`data/cloud/master.db`) isn't encrypted;
+  the host it runs on is assumed to be sufficiently secured.
 - No gateway or cloud response caching for redundancy: the cloud being down
   means every door stays closed.
 
@@ -123,7 +126,11 @@ Run pytests with
 make test
 ```
 
-It runs the unit and integration tests in `tests/unit` and `tests/integration`.
+It runs the unit and integration tests in `tests/unit` and `tests/integration`,
+then the control panel's JavaScript tests (`tests/unit/cloud/static/*.test.mjs`)
+on Node's built-in test runner. Those load `cloud/static/app.js` and
+`stakeholders.js` unchanged into a stand-in page (`panel.mjs`) and test their
+pure functions; no npm packages are needed.
 
 Run the end-to-end tests. They build the images, start the compose stack from
 them and check it from outside, as the doors and an admin see it: decisions,
@@ -153,7 +160,7 @@ GitHub Actions, in `.github/workflows/`:
 |---|---|---|
 | `pr.yml` | every pull request | `make lint` and `make test`, `make e2e`, and `can-merge`, which passes when both do |
 | `release.yml` | a `v*` tag | the same checks, then builds the images for amd64 and arm64, runs the e2e tests on the amd64 ones and pushes them to the GitHub container registry |
-| `test.yml` | called by both | lint and tests, in `python:3.15-slim`: its OpenSSL has ML-KEM, and the runner's doesn't (pytest would skip those tests) |
+| `test.yml` | called by both | lint and tests, in `python:3.15-slim`: its OpenSSL has ML-KEM, and the runner's doesn't (pytest would skip those tests). Installs Debian's Node.js for the JavaScript tests |
 
 A pull request may be merged once its `can-merge` check is green. GitHub
 doesn't enforce that here (no branch protection for a private repository on

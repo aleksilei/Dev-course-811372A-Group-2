@@ -62,6 +62,19 @@ def negotiated_group(ssl_object: ssl.SSLObject | ssl.SSLSocket | None) -> str | 
     return None if group is None else _GROUP_NAMES.get(group.lower(), group)
 
 
+def link_details(ssl_object: ssl.SSLObject | ssl.SSLSocket | None) -> dict:
+    """The TLS version, cipher suite and key-exchange group of a connection,
+    each None if unknown (e.g. no TLS, or no handshake yet)."""
+    if ssl_object is None:
+        return {'tls_version': None, 'cipher': None, 'key_exchange': None}
+    cipher = ssl_object.cipher()  # (name, protocol, secret bits) or None
+    return {
+        'tls_version': ssl_object.version(),
+        'cipher': cipher[0] if cipher else None,
+        'key_exchange': negotiated_group(ssl_object),
+    }
+
+
 def is_post_quantum(group: str | None) -> bool | None:
     """Whether a key-exchange group includes ML-KEM, or None if unknown."""
     return None if group is None else 'MLKEM' in group.upper()

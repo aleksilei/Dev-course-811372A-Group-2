@@ -103,6 +103,8 @@ async def test_reports_the_connected_readers_on_every_change(wait_until):
             'id': 'rd-1',
             'address': '10.10.0.2',
             'since': cloud.reports[1][0]['since'],
+            'tls_version': None,
+            'cipher': None,
             'key_exchange': None,
         }
     ]

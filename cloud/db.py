@@ -18,11 +18,11 @@ LIMIT 1
 
 LOG_EVENT = """
 INSERT INTO ACCESS_EVENTS
-    (timestamp, key_uuid, reader_id, zone_name, gateway_id, result)
+    (timestamp, key_uuid, reader_id, zone_name, gateway_id, result, key_exchange)
 VALUES (
     :timestamp, :key_uuid, :reader_id,
     (SELECT zone_name FROM READERS WHERE id = :reader_id),
-    :gateway_id, :result
+    :gateway_id, :result, :key_exchange
 )
 """
 
@@ -41,6 +41,13 @@ SELECT id, gateway_id, address, key_exchange, post_quantum,
 FROM GATEWAY_CONNECTIONS
 WHERE (:gateway_id IS NULL OR gateway_id = :gateway_id)
 ORDER BY connected_at DESC, id DESC
+"""
+
+EVENT_COUNTS_SINCE = """
+SELECT gateway_id, key_exchange, COUNT(*) AS count
+FROM ACCESS_EVENTS
+WHERE timestamp >= :since AND timestamp <= :until
+GROUP BY gateway_id, key_exchange
 """
 
 # Keys exist only through their groups, so also list keys seen at a reader:
@@ -68,10 +75,21 @@ class Database:
                 "SELECT 1 FROM sqlite_master WHERE name = 'GATEWAYS'"
             ).fetchone()
             conn.executescript(SCHEMA.read_text(encoding='utf-8'))
+            columns = {
+                row['name'] for row in conn.execute('PRAGMA table_info(ACCESS_EVENTS)')
+            }
+            if 'key_exchange' not in columns:
+                conn.execute('ALTER TABLE ACCESS_EVENTS ADD COLUMN key_exchange TEXT')
             if is_new:
                 conn.executescript(SEED.read_text(encoding='utf-8'))
 
-    def authorize(self, key_uuid: str, reader_id: str, gateway_id: str) -> str:
+    def authorize(
+        self,
+        key_uuid: str,
+        reader_id: str,
+        gateway_id: str,
+        key_exchange: str | None = None,
+    ) -> str:
         """Return 'pass' or 'fail' and record the attempt as an access event."""
         with self._connect() as conn:
             params = {'key_uuid': key_uuid, 'reader_id': reader_id}
@@ -83,6 +101,7 @@ class Database:
                     'timestamp': datetime.now(UTC).isoformat(timespec='seconds'),
                     'gateway_id': gateway_id,
                     'result': result,
+                    'key_exchange': key_exchange,
                 },
             )
         return result
@@ -148,6 +167,16 @@ class Database:
             if row['post_quantum'] is not None:
                 row['post_quantum'] = bool(row['post_quantum'])
         return rows
+
+    def event_counts_since(self, since: str, until: str) -> list[dict]:
+        """Count events by gateway and recorded key exchange within UTC ISO bounds."""
+        with self._connect() as conn:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    EVENT_COUNTS_SINCE, {'since': since, 'until': until}
+                )
+            ]
 
     def gateway_ids(self) -> list[str]:
         with self._connect() as conn:

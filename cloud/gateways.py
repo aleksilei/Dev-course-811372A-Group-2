@@ -9,7 +9,7 @@ from lib.hub import Hub
 log = logging.getLogger(__name__)
 
 # The fields kept of each reader a gateway reports, and at most how many.
-READER_FIELDS = ('id', 'address', 'since', 'key_exchange')
+READER_FIELDS = ('id', 'address', 'since', 'tls_version', 'cipher', 'key_exchange')
 MAX_READERS = 1000
 
 
@@ -72,7 +72,11 @@ class GatewayHub(Hub):
         if isinstance(key_uuid, str) and isinstance(reader_id, str):
             # In a thread: SQLite may wait for a lock (e.g. held by sqlite-web).
             result = await asyncio.to_thread(
-                self.db.authorize, key_uuid, reader_id, client_id
+                self.db.authorize,
+                key_uuid,
+                reader_id,
+                client_id,
+                self.request_key_exchange(),
             )
         return {'request_id': request.get('request_id'), 'result': result}
 

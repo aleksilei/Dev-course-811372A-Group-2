@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS ACCESS_EVENTS (
     reader_id TEXT NOT NULL,
     zone_name TEXT,
     gateway_id TEXT NOT NULL,
-    result TEXT NOT NULL CHECK (result IN ('pass', 'fail'))
+    result TEXT NOT NULL CHECK (result IN ('pass', 'fail')),
+    key_exchange TEXT
 );
 
 CREATE TABLE IF NOT EXISTS GATEWAY_CONNECTIONS (
@@ -46,3 +47,6 @@ CREATE TABLE IF NOT EXISTS GATEWAY_CONNECTIONS (
 
 CREATE INDEX IF NOT EXISTS gateway_connections_gateway_time
     ON GATEWAY_CONNECTIONS (gateway_id, connected_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS ACCESS_EVENTS_TIMESTAMP
+    ON ACCESS_EVENTS (timestamp);

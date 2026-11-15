@@ -302,6 +302,18 @@ def test_https_still_works_after_plain_http_and_dropped_connections(panel, get):
     assert get('/')[0] == 200
 
 
+def test_devices_api_lists_the_seed_devices_and_the_panels_own_link(get):
+    status, content_type, body = get('/api/devices')
+
+    assert (status, content_type) == (200, 'application/json')
+    result = json.loads(body)
+    # Nothing is connected: gateways offline, readers unknown.
+    assert {row['status'] for row in result['devices']} == {'offline', 'unknown'}
+    assert result['panel']['tls_version'] == 'TLSv1.3'
+    assert result['panel']['key_exchange'] == 'X25519'
+    assert result['panel']['post_quantum'] is False
+
+
 def test_summary_api_reports_offline_seed_gateways(get):
     status, content_type, body = get('/api/summary')
 
@@ -318,3 +330,7 @@ def test_summary_api_reports_offline_seed_gateways(get):
     }
     assert summary['status'] == 'red'
     assert summary['readers'] == 5
+    assert summary['readiness'] is None
+    assert summary['gateway_coverage'] is None
+    assert summary['non_pqc_traffic_share'] is None
+    assert summary['recent_events'] == 0

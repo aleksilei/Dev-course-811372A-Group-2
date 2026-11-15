@@ -1,7 +1,8 @@
 'use strict';
 
-// Tabs (#operations, #stakeholders/<view>) and the stakeholder views, drawn
-// from /api/summary. Loaded after app.js, whose $() and getJSON() it uses.
+// Tabs (#operations, #logs, #stakeholders/<view>) and the stakeholder views, drawn
+// from /api/summary and /api/devices. Loaded after app.js, whose $(),
+// getJSON(), redraw() and connectionLabel() it uses.
 
 const SUMMARY_MS = 5000;
 const DEFAULT_VIEW = 'cio';
@@ -29,12 +30,62 @@ function statusBadge(status, label = STATUS[status].label) {
   return el('span', { className: `badge ${status}`, text: label });
 }
 
+// A cell is text, or {text, className} to colour it with the panel's classes.
 function table(headers, rows) {
   const body = el('tbody');
-  for (const row of rows) body.append(el('tr', {}, ...row.map((cell) => el('td', { text: cell }))));
+  for (const row of rows) {
+    body.append(el('tr', {}, ...row.map((cell) => (
+      cell !== null && typeof cell === 'object' ? el('td', cell) : el('td', { text: cell ?? '–' })
+    ))));
+  }
   return el('div', { className: 'scroll' }, el('table', {},
     el('thead', {}, el('tr', {}, ...headers.map((header) => el('th', { text: header })))),
     body));
+}
+
+// How a device's encryption status is shown, in the panel's existing colours.
+const DEVICE_STATUS = {
+  'post-quantum': 'pass',
+  classical: 'warn',
+  unknown: '',
+  offline: 'fail',
+};
+
+// "X25519MLKEM768 (post-quantum), TLSv1.3, TLS_AES_256_GCM_SHA384"
+function linkText(link) {
+  if (!link) return '–';
+  const kind = { true: 'post-quantum', false: 'classical' }[link.post_quantum] ?? 'unknown';
+  return `${link.key_exchange ?? 'unknown'} (${kind}), ${link.tls_version ?? '?'}, ${link.cipher ?? '?'}`;
+}
+
+function statusCounts(counts, statuses) {
+  return statuses.map((status) => `${counts[status]} ${status}`).join(', ');
+}
+
+// The encryption status of every device (SCRUM-18): one row per gateway and
+// reader, its own link, and for readers also their gateway's link to the cloud.
+function deviceStatus(devices) {
+  if (!devices) return [el('p', { text: 'Loading…' })];
+  const own = (device) => device.links[0];
+  const upstream = (device) => (device.type === 'reader' ? device.links[1] : null);
+  return [
+    el('h3', { text: 'Encryption status of every device' }),
+    el('p', { className: 'hint', text: `Gateways: ${statusCounts(devices.counts.gateway, devices.statuses)}. `
+      + `Readers: ${statusCounts(devices.counts.reader, devices.statuses)}. A device is as strong as its `
+      + 'weakest link: reader traffic crosses the classical reader → gateway hop (per the spec) and its '
+      + "gateway's link to the cloud." }),
+    table(['Device', 'Type', 'Gateway', 'Status', 'Own link', "Gateway's link to the cloud", 'Connection'],
+      devices.devices.map((device) => [
+        device.id,
+        device.type,
+        device.gateway ?? '–',
+        { text: device.status, className: DEVICE_STATUS[device.status] },
+        linkText(own(device)),
+        device.type === 'reader' ? linkText(upstream(device)) : '–',
+        connectionLabel(device), // from app.js, as in the Readers list
+      ])),
+    el('p', { className: 'hint', text: `This control panel: ${linkText(devices.panel)}.` }),
+  ];
 }
 
 function concerns({ addressed, notYet, wont }) {
@@ -97,28 +148,41 @@ const VIEWS = {
     question: 'How close are we to PQC readiness, and what is blocking us?',
     draw(summary) {
       const { gateways } = summary;
+      const trafficNote = summary.readiness === null
+        ? 'No access events in the last hour; traffic readiness is unavailable. '
+        : `${percent(summary.non_pqc_traffic_share)} of access events in the last hour `
+          + 'used non-PQC or unknown key exchange. ';
       const blockers = [
-        ...summary.classical.map((g) => [g.id, 'classical key exchange', g.readers, 'upgrade or replace']),
-        ...summary.unknown.map((g) => [g.id, 'key exchange unknown', g.readers, 'check the gateway']),
-        ...summary.offline.map((g) => [g.id, 'offline, not measured', g.readers, 'reconnect']),
+        ...summary.classical.map((g) => [
+          g.id, 'classical key exchange', g.readers, percent(g.traffic_share), 'upgrade or replace',
+        ]),
+        ...summary.unknown.map((g) => [
+          g.id, 'key exchange unknown', g.readers, percent(g.traffic_share), 'check the gateway',
+        ]),
+        ...summary.offline.map((g) => [
+          g.id, 'offline, not measured', g.readers, percent(g.traffic_share), 'reconnect',
+        ]),
       ];
       return [
         el('div', { className: 'score' },
           el('span', { className: 'score-value', text: percent(summary.readiness) }),
-          el('span', { text: 'PQC readiness' }),
+          el('span', { text: 'PQC traffic readiness' }),
           el('progress', { max: 1, value: summary.readiness ?? 0 }),
-          el('span', { className: 'hint', text: `${gateways.hybrid} of ${plural(gateways.connected, 'connected gateway')} `
-            + `on post-quantum hybrid key exchange${gateways.offline ? `; ${gateways.offline} offline, not counted` : ''}.` })),
+          el('span', { className: 'hint', text: `${trafficNote}Gateway coverage is ${percent(summary.gateway_coverage)} `
+            + `(${gateways.hybrid} of ${plural(gateways.connected, 'connected gateway')} on post-quantum hybrid).` })),
         el('h3', { text: 'Blocking readiness' }),
         blockers.length
-          ? table(['Gateway', 'Why', 'Readers behind it', 'Next step'], blockers)
+          ? table(
+            ['Gateway', 'Why', 'Readers behind it', 'Traffic share (last hour)', 'Next step'],
+            blockers,
+          )
           : el('p', { text: 'Nothing: every connected gateway is ready.' }),
       ];
     },
     concerns: {
       addressed: [
-        'A single readiness score to report upwards: the share of connected gateways on post-quantum hybrid.',
-        'What is blocking readiness: each classical, unknown or offline gateway and the readers behind it.',
+        'Traffic-weighted PQC readiness for the last hour, with gateway coverage shown separately.',
+        'What is blocking readiness: each classical, unknown or offline gateway, its traffic share, and the readers behind it.',
       ],
       notYet: [
         'A migration trend or completion forecast; the Logs tab provides connection records, not a trend.',
@@ -133,7 +197,7 @@ const VIEWS = {
   security: {
     title: 'Security officer',
     question: 'Which connections are still quantum-vulnerable, and how serious is that?',
-    draw(summary) {
+    draw(summary, devices) {
       const { gateways } = summary;
       const exposed = gateways.classical + gateways.unknown;
       const cut = summary.hybrid_only_disconnects;
@@ -141,10 +205,12 @@ const VIEWS = {
         el('div', { className: `headline ${exposed ? (summary.status === 'red' ? 'red' : 'amber') : 'green'}` },
           statusBadge(exposed ? (summary.status === 'red' ? 'red' : 'amber') : 'green',
             exposed ? `Exposed: ${plural(exposed, 'connection')}` : 'No classical connections'),
-          el('p', { text: exposed
-            ? `${percent(summary.classical_traffic_share)} of the last ${summary.recent_events} access events `
-              + 'went over classical key exchange and could be harvested now and decrypted later.'
-            : 'Every connected gateway negotiated post-quantum hybrid key exchange.' })),
+          el('p', { text: summary.non_pqc_traffic_share === null
+            ? 'No access events in the last hour; traffic readiness is unavailable.'
+            : summary.non_pqc_traffic_share === 0
+              ? 'All access events in the last hour used confirmed post-quantum key exchange.'
+              : `${percent(summary.non_pqc_traffic_share)} of access events in the last hour `
+                + 'used non-PQC or unknown key exchange. These events are not confirmed quantum-safe.' })),
         el('h3', { text: 'Quantum-vulnerable connections' }),
         exposed
           ? table(['Gateway', 'Key exchange', 'Readers behind it', 'Share of recent traffic'], [
@@ -161,6 +227,7 @@ const VIEWS = {
           el('h3', { text: 'Offline gateways (not monitored)' }),
           table(['Gateway', 'Readers behind it'], summary.offline.map((g) => [g.id, g.readers])),
         ] : []),
+        ...deviceStatus(devices),
       ];
     },
     concerns: {
@@ -169,6 +236,7 @@ const VIEWS = {
         'No "green" while any classical connection remains.',
         'What turning off classical fallback would disconnect.',
         'Current and past gateway sessions, with their addresses and key exchanges, in the Logs tab.',
+        'The encryption status of every device and link: TLS version, cipher and key exchange.',
       ],
       notYet: [
         'Automatic alerts on downgrade attempts; the connection history makes changes visible but does not '
@@ -182,7 +250,7 @@ const VIEWS = {
   },
 };
 
-// '#stakeholders/cio' -> {tab: 'stakeholders', view: 'cio'}
+// '#stakeholders/cio' -> {tab: 'stakeholders', view: 'cio'}; '#logs' -> logs.
 function route() {
   const [tab, view] = window.location.hash.slice(1).split('/');
   return {
@@ -192,6 +260,7 @@ function route() {
 }
 
 let latestSummary = null;
+let latestDevices = null;
 
 function drawView() {
   const { tab, view } = route();
@@ -207,9 +276,9 @@ function drawView() {
   if (tab !== 'stakeholders' || !latestSummary) return;
 
   const spec = VIEWS[view];
-  redraw('stakeholder-view', [view, latestSummary], () => $('view').replaceChildren(
+  redraw('stakeholder-view', [view, latestSummary, latestDevices], () => $('view').replaceChildren(
     el('p', { className: 'question', text: `“${spec.question}”` }),
-    ...spec.draw(latestSummary),
+    ...spec.draw(latestSummary, latestDevices),
     concerns(spec.concerns),
   ));
 }
@@ -217,7 +286,9 @@ function drawView() {
 async function refreshSummary() {
   if (route().tab !== 'stakeholders') return;
   try {
-    latestSummary = await getJSON('/api/summary');
+    [latestSummary, latestDevices] = await Promise.all([
+      getJSON('/api/summary'), getJSON('/api/devices'),
+    ]);
     drawView();
   } catch (error) {
     $('status').textContent = `Update failed: ${error.message}`;

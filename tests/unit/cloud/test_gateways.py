@@ -10,6 +10,8 @@ READER = {
     'id': 'rd-3',
     'address': '10.10.0.4',
     'since': '2026-11-15T12:00:00+00:00',
+    'tls_version': 'TLSv1.3',
+    'cipher': 'TLS_AES_256_GCM_SHA384',
     'key_exchange': 'X25519',
 }
 
@@ -140,7 +142,13 @@ async def test_gateway_connection_is_recorded_and_closed_on_disconnect(db, wait_
     hub = GatewayHub(db)
     ws = GatewayConnection('gw-1', [])
     ws.transport = SimpleNamespace(
-        get_extra_info={'ssl_object': SimpleNamespace(group=lambda: 'X25519')}.get
+        get_extra_info={
+            'ssl_object': SimpleNamespace(
+                group=lambda: 'X25519',
+                version=lambda: 'TLSv1.3',
+                cipher=lambda: ('TLS_AES_256_GCM_SHA384', 'TLSv1.3', 256),
+            )
+        }.get
     )
     task = asyncio.create_task(hub.handle(ws))
     await wait_until(hub.connected)
@@ -194,6 +202,8 @@ async def test_keeps_only_the_known_string_fields_of_each_reader(db):
             'id': 'rd-9',
             'address': None,
             'since': None,
+            'tls_version': None,
+            'cipher': None,
             'key_exchange': None,
             'post_quantum': None,
         }
