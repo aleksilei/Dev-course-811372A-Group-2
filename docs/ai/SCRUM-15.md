@@ -120,8 +120,8 @@ The developer reviewed the result and asked for three things:
 - once they had merged it after code review, the ticket moved to Done, with
   a comment linking the PR and saying it fulfils the DoD.
 
-The assistant committed the branch `reader-connections` and opened the PR,
-which went through the advisory `can-merge` CI check. The ticket stays In
+The assistant committed the branch `reader-connections` and opened it as
+PR #11, which goes through the advisory `can-merge` CI check. The ticket stays In
 Progress until the developer reports the merge.
 
 ## Where the developer steered
