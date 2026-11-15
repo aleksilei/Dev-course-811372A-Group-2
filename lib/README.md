@@ -10,7 +10,7 @@ into the dev venv by `make install`); it also pins the one runtime dependency,
 | `lib.tls` | `server_context()` / `client_context()` and the key-exchange groups of each hop (`gateway_cloud()` reads the gateway → cloud ones from `KEY_EXCHANGE`). `negotiated_group()` / `is_post_quantum()` for what a connection negotiated. |
 | `lib.hub` | `Hub`: the server end of a WebSocket hop (see below). |
 | `lib.certs` | Dev CA and server certificates (`make certs`). |
-| `lib.topology` | The opt-in scaled stack (`make run-scaled`): writes a compose override with extra gateway sites, their certificates and the seed data into `data-scaled/`. Host-side only. See the [root README](../README.md#scaled-stack-opt-in). |
+| `lib.topology` | The opt-in scaled stack (`make run-scaled`): writes a compose override with extra gateway sites, their certificates and the seed data into `data-scaled/`. Host-side only. See [below](#scaled-stack-libtopology). |
 
 ## TLS (`lib.tls`)
 
@@ -111,6 +111,30 @@ Everything WebSocket-related uses the `websockets` **asyncio** API, so all TLS
 I/O happens on one event-loop thread. The library's threaded API was dropped
 because it reads and writes one OpenSSL connection from two threads, which
 crashed the process under load.
+
+## Scaled stack (`lib.topology`)
+
+`make run-scaled` (see the [root README](../README.md#scaled-stack-opt-in))
+starts the default stack plus extra gateway sites, sized with make variables:
+`GATEWAYS` (default 10), `READERS` per gateway (default 8) and `CLASSICAL`, how
+many of the last sites' gateways have no ML-KEM (default 2), like `gateway-2`.
+
+- Site `n` is gateway `gw-s<n>` with readers `rd-s<n>-1`, `rd-s<n>-2`, … on a
+  reader VLAN of its own (`10.10.<n>.0/24`, gateway at `10.10.<n>.10`), in
+  zones `s<n>-front-door`, `s<n>-employee-door`, …, opened by the same groups
+  as the default stack's zones.
+- `lib.topology` writes the compose override, certificates and seed data into
+  `data-scaled/` (gitignored), so nothing scaled is committed and
+  `docker-compose.yml`, `make run` and `make e2e` are unchanged. Changing the
+  size starts the scaled database afresh; otherwise edits made in the panel
+  are kept, as in `data/`.
+- It uses the default stack's ports, so `make stop` first. Then
+  `make ps-scaled`, `make logs-scaled SERVICE=reader-s3-2`, and
+  `make stop-scaled`. The control panel's CA is `data-scaled/certs/ca.pem`.
+- Sites take turns being busy, normal, quiet and very quiet: their readers
+  wait 1-3, 2-8, 5-15 or 10-30 s between scans, so traffic per site differs
+  by up to 10x (see [reader/README.md](../reader/README.md#scan-interval)).
+- Every device is its own container (about 100 at the default size).
 
 ## Certificates (`lib.certs`)
 
