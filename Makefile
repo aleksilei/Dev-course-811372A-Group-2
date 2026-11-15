@@ -1,6 +1,7 @@
 SHELL := /bin/sh
 
 PYTHON ?= python3.15
+NODE ?= node
 VENV := venv
 VENV_BIN := $(VENV)/bin
 VENV_PYTHON := $(VENV_BIN)/python
@@ -43,9 +44,12 @@ fix: venv
 	$(RUFF) check --fix
 	$(RUFF) format
 
-# Unit and integration tests: the testpaths in pyproject.toml.
+# Unit and integration tests (the testpaths in pyproject.toml), then the
+# control panel's JavaScript unit tests on Node's built-in test runner.
 test: venv
 	$(VENV_PYTHON) -m pytest
+	@command -v $(NODE) >/dev/null || { echo "Node.js is needed for the panel's JavaScript tests"; exit 1; }
+	$(NODE) --test tests/unit/cloud/static/*.test.mjs
 
 # Builds the images, then runs the compose stack from them.
 e2e: venv check-docker build
@@ -142,7 +146,7 @@ help:
 	@echo "  install        Install Python dependencies"
 	@echo "  lint           Run linters"
 	@echo "  fix            Automatically fix lint/format issues"
-	@echo "  test           Run unit and integration tests"
+	@echo "  test           Run unit and integration tests, and the panel's JavaScript tests"
 	@echo "  e2e            Build the images and run the end-to-end tests on them"
 	@echo "  check          Run linting and tests"
 	@echo "  clean          Remove generated Python files"
