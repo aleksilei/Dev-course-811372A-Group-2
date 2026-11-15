@@ -97,28 +97,41 @@ const VIEWS = {
     question: 'How close are we to PQC readiness, and what is blocking us?',
     draw(summary) {
       const { gateways } = summary;
+      const trafficNote = summary.readiness === null
+        ? 'No access events in the last hour; traffic readiness is unavailable. '
+        : `${percent(summary.non_pqc_traffic_share)} of access events in the last hour `
+          + 'used non-PQC or unknown key exchange. ';
       const blockers = [
-        ...summary.classical.map((g) => [g.id, 'classical key exchange', g.readers, 'upgrade or replace']),
-        ...summary.unknown.map((g) => [g.id, 'key exchange unknown', g.readers, 'check the gateway']),
-        ...summary.offline.map((g) => [g.id, 'offline, not measured', g.readers, 'reconnect']),
+        ...summary.classical.map((g) => [
+          g.id, 'classical key exchange', g.readers, percent(g.traffic_share), 'upgrade or replace',
+        ]),
+        ...summary.unknown.map((g) => [
+          g.id, 'key exchange unknown', g.readers, percent(g.traffic_share), 'check the gateway',
+        ]),
+        ...summary.offline.map((g) => [
+          g.id, 'offline, not measured', g.readers, percent(g.traffic_share), 'reconnect',
+        ]),
       ];
       return [
         el('div', { className: 'score' },
           el('span', { className: 'score-value', text: percent(summary.readiness) }),
-          el('span', { text: 'PQC readiness' }),
+          el('span', { text: 'PQC traffic readiness' }),
           el('progress', { max: 1, value: summary.readiness ?? 0 }),
-          el('span', { className: 'hint', text: `${gateways.hybrid} of ${plural(gateways.connected, 'connected gateway')} `
-            + `on post-quantum hybrid key exchange${gateways.offline ? `; ${gateways.offline} offline, not counted` : ''}.` })),
+          el('span', { className: 'hint', text: `${trafficNote}Gateway coverage is ${percent(summary.gateway_coverage)} `
+            + `(${gateways.hybrid} of ${plural(gateways.connected, 'connected gateway')} on post-quantum hybrid).` })),
         el('h3', { text: 'Blocking readiness' }),
         blockers.length
-          ? table(['Gateway', 'Why', 'Readers behind it', 'Next step'], blockers)
+          ? table(
+            ['Gateway', 'Why', 'Readers behind it', 'Traffic share (last hour)', 'Next step'],
+            blockers,
+          )
           : el('p', { text: 'Nothing: every connected gateway is ready.' }),
       ];
     },
     concerns: {
       addressed: [
-        'A single readiness score to report upwards: the share of connected gateways on post-quantum hybrid.',
-        'What is blocking readiness: each classical, unknown or offline gateway and the readers behind it.',
+        'Traffic-weighted PQC readiness for the last hour, with gateway coverage shown separately.',
+        'What is blocking readiness: each classical, unknown or offline gateway, its traffic share, and the readers behind it.',
       ],
       notYet: [
         'Progress over time, and whether the migration will finish on time: needs the connection history (SCRUM-33).',
@@ -141,10 +154,12 @@ const VIEWS = {
         el('div', { className: `headline ${exposed ? (summary.status === 'red' ? 'red' : 'amber') : 'green'}` },
           statusBadge(exposed ? (summary.status === 'red' ? 'red' : 'amber') : 'green',
             exposed ? `Exposed: ${plural(exposed, 'connection')}` : 'No classical connections'),
-          el('p', { text: exposed
-            ? `${percent(summary.classical_traffic_share)} of the last ${summary.recent_events} access events `
-              + 'went over classical key exchange and could be harvested now and decrypted later.'
-            : 'Every connected gateway negotiated post-quantum hybrid key exchange.' })),
+          el('p', { text: summary.non_pqc_traffic_share === null
+            ? 'No access events in the last hour; traffic readiness is unavailable.'
+            : summary.non_pqc_traffic_share === 0
+              ? 'All access events in the last hour used confirmed post-quantum key exchange.'
+              : `${percent(summary.non_pqc_traffic_share)} of access events in the last hour `
+                + 'used non-PQC or unknown key exchange. These events are not confirmed quantum-safe.' })),
         el('h3', { text: 'Quantum-vulnerable connections' }),
         exposed
           ? table(['Gateway', 'Key exchange', 'Readers behind it', 'Share of recent traffic'], [

@@ -35,6 +35,13 @@ ORDER BY rowid DESC
 LIMIT :limit
 """
 
+EVENT_COUNTS_SINCE = """
+SELECT gateway_id, COUNT(*) AS events
+FROM ACCESS_EVENTS
+WHERE timestamp >= :since
+GROUP BY gateway_id
+"""
+
 # Keys exist only through their groups, so also list keys seen at a reader:
 # the admin can then grant access to a key that was just turned away.
 KEYS = """
@@ -89,6 +96,14 @@ class Database:
         params = {'key_uuid': key_uuid, 'reader_id': reader_id, 'limit': limit}
         with self._connect() as conn:
             return [dict(row) for row in conn.execute(EVENTS, params)]
+
+    def event_counts_since(self, since: str) -> dict[str, int]:
+        """Count access events per gateway since an ISO-8601 timestamp."""
+        with self._connect() as conn:
+            return {
+                row['gateway_id']: row['events']
+                for row in conn.execute(EVENT_COUNTS_SINCE, {'since': since})
+            }
 
     def gateway_ids(self) -> list[str]:
         with self._connect() as conn:

@@ -65,6 +65,40 @@ def test_events_are_newest_first_and_filterable(db):
     assert len(db.events(limit=2)) == 2
 
 
+def test_event_counts_since_counts_accesses_per_gateway(db):
+    with sqlite3.connect(db.path) as conn:
+        conn.executemany(
+            'INSERT INTO ACCESS_EVENTS '
+            '(timestamp, key_uuid, reader_id, zone_name, gateway_id, result) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            [
+                (
+                    '2026-01-01T10:00:00+00:00',
+                    'key-alice',
+                    'rd-1',
+                    None,
+                    'gw-old',
+                    'pass',
+                ),
+                (
+                    '2026-01-01T11:00:00+00:00',
+                    'key-alice',
+                    'rd-1',
+                    None,
+                    'gw-1',
+                    'pass',
+                ),
+                ('2026-01-01T11:30:00+00:00', 'key-bob', 'rd-2', None, 'gw-1', 'fail'),
+                ('2026-01-01T11:45:00+00:00', 'key-bob', 'rd-3', None, 'gw-2', 'pass'),
+            ],
+        )
+
+    assert db.event_counts_since('2026-01-01T11:00:00+00:00') == {
+        'gw-1': 2,
+        'gw-2': 1,
+    }
+
+
 def test_readers_lists_gateway_and_zone(db):
     assert db.readers() == [
         {'id': 'rd-1', 'gateway_id': 'gw-1', 'zone_name': 'front-door'},

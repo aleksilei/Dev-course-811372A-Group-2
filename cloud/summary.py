@@ -2,14 +2,15 @@
 
 summarize() is a pure function of what the cloud knows right now: the
 connected gateways, the gateways and readers in the database, and the recent
-access events. It holds the readiness score (SCRUM-11) and the status rules.
+access traffic. It holds the readiness scores (SCRUM-13) and the status rules.
 """
 
 import re
 from collections import Counter
+from datetime import timedelta
 
-# How many of the newest access events count as "recent traffic".
-RECENT_EVENTS = 500
+# The rolling traffic window used by the migration and security scores.
+TRAFFIC_WINDOW = timedelta(hours=1)
 
 
 def _natural(gateway_id: str) -> list:
@@ -19,23 +20,60 @@ def _natural(gateway_id: str) -> list:
     ]
 
 
+def _gateway_groups(online: dict[str, dict], known: list[str]) -> dict[str, list[str]]:
+    """Classify connected gateways and identify those known but offline."""
+    return {
+        'hybrid': [g for g in online if online[g].get('post_quantum') is True],
+        'classical': sorted(
+            (g for g in online if online[g].get('post_quantum') is False), key=_natural
+        ),
+        'unknown': sorted(
+            (g for g in online if online[g].get('post_quantum') is None), key=_natural
+        ),
+        'offline': [g for g in known if g not in online],
+    }
+
+
+def _traffic_summary(online: dict[str, dict], traffic_at: Counter) -> dict:
+    """Summarize traffic, treating anything not confirmed hybrid as non-PQC."""
+    total = sum(traffic_at.values())
+    non_pqc = sum(
+        count
+        for gateway_id, count in traffic_at.items()
+        if online.get(gateway_id, {}).get('post_quantum') is not True
+    )
+    return {
+        'total': total,
+        'readiness': _share(total - non_pqc, total),
+        'non_pqc_share': _share(non_pqc, total),
+    }
+
+
 def summarize(
     connected: list[dict],
     known_ids: list[str],
     readers: list[dict],
     events: list[dict],
+    traffic_counts: dict[str, int] | None = None,
 ) -> dict:
-    """Readiness, status and risks.
+    """Traffic readiness, gateway coverage, status and risks.
 
     connected: GatewayHub.connected() rows (id, post_quantum, key_exchange, ...)
     known_ids: gateway IDs in the database
     readers: Database.readers() rows (id, gateway_id, zone_name)
-    events: recent Database.events() rows (gateway_id, ...)
+    events: access events (gateway_id, ...), unless traffic_counts is supplied
+    traffic_counts: event counts by gateway within the traffic window
     """
     online = {gateway['id']: gateway for gateway in connected}
     known = sorted(set(known_ids) | set(online), key=_natural)
     readers_at = Counter(reader['gateway_id'] for reader in readers)
-    traffic_at = Counter(event['gateway_id'] for event in events)
+    traffic_at = (
+        Counter(traffic_counts)
+        if traffic_counts is not None
+        else Counter(event['gateway_id'] for event in events)
+    )
+    groups = _gateway_groups(online, known)
+    traffic = _traffic_summary(online, traffic_at)
 
     def detail(gateway_id: str) -> dict:
         gateway = online.get(gateway_id, {})
@@ -43,42 +81,34 @@ def summarize(
             'id': gateway_id,
             'key_exchange': gateway.get('key_exchange'),
             'readers': readers_at[gateway_id],
-            'traffic_share': _share(traffic_at[gateway_id], len(events)),
+            'traffic_share': _share(traffic_at[gateway_id], traffic['total']),
         }
 
-    hybrid = [g for g in online if online[g].get('post_quantum') is True]
-    classical = sorted(
-        (g for g in online if online[g].get('post_quantum') is False), key=_natural
-    )
-    unknown = sorted(
-        (g for g in online if online[g].get('post_quantum') is None), key=_natural
-    )
-    offline = [g for g in known if g not in online]
-
-    classical_details = [detail(g) for g in classical]
     summary = {
-        'readiness': _share(len(hybrid), len(online)),
+        'readiness': traffic['readiness'],
+        'gateway_coverage': _share(len(groups['hybrid']), len(online)),
         'gateways': {
             'known': len(known),
             'connected': len(online),
-            'hybrid': len(hybrid),
-            'classical': len(classical),
-            'unknown': len(unknown),
-            'offline': len(offline),
+            'hybrid': len(groups['hybrid']),
+            'classical': len(groups['classical']),
+            'unknown': len(groups['unknown']),
+            'offline': len(groups['offline']),
         },
         'readers': len(readers),
-        'classical': classical_details,
-        'unknown': [detail(g) for g in unknown],
-        'offline': [detail(g) for g in offline],
+        'classical': [detail(g) for g in groups['classical']],
+        'unknown': [detail(g) for g in groups['unknown']],
+        'offline': [detail(g) for g in groups['offline']],
         'classical_traffic_share': _share(
-            sum(traffic_at[g] for g in classical), len(events)
+            sum(traffic_at[g] for g in groups['classical']), traffic['total']
         ),
+        'non_pqc_traffic_share': traffic['non_pqc_share'],
         # What switching the cloud to KEY_EXCHANGE=hybrid-only would cut off.
         'hybrid_only_disconnects': {
-            'gateways': len(classical),
-            'readers': sum(readers_at[g] for g in classical),
+            'gateways': len(groups['classical']),
+            'readers': sum(readers_at[g] for g in groups['classical']),
         },
-        'recent_events': len(events),
+        'recent_events': traffic['total'],
     }
     summary['status'] = _status(summary['gateways'])
     summary['risks'] = _risks(summary)
@@ -120,7 +150,9 @@ def _risks(summary: dict) -> list[dict]:
         )
     if summary['classical']:
         share = summary['classical_traffic_share']
-        traffic = f'; they carry {share:.0%} of recent door traffic' if share else ''
+        traffic = (
+            f"; they carry {share:.0%} of last hour's door traffic" if share else ''
+        )
         risks.append(
             {
                 'severity': 'high' if summary['status'] == 'red' else 'medium',

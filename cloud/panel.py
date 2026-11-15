@@ -2,13 +2,14 @@ import json
 import logging
 import socket
 import ssl
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
 from cloud.db import Database
 from cloud.gateways import GatewayHub
-from cloud.summary import RECENT_EVENTS, summarize
+from cloud.summary import TRAFFIC_WINDOW, summarize
 
 log = logging.getLogger(__name__)
 
@@ -103,7 +104,12 @@ class PanelHandler(BaseHTTPRequestHandler):
                     self.server.gateways.connected(),
                     db.gateway_ids(),
                     db.readers(),
-                    db.events(limit=RECENT_EVENTS),
+                    [],
+                    traffic_counts=db.event_counts_since(
+                        (datetime.now(UTC) - TRAFFIC_WINDOW).isoformat(
+                            timespec='seconds'
+                        )
+                    ),
                 )
             )
         elif url.path in STATIC_FILES:
