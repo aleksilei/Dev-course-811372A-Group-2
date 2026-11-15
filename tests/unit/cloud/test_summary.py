@@ -21,13 +21,7 @@ def gateways(**kinds):
 
 
 def events(*gateway_ids):
-    return [
-        {
-            'gateway_id': gateway_id,
-            'key_exchange': 'X25519' if gateway_id == 'gw-2' else 'X25519MLKEM768',
-        }
-        for gateway_id in gateway_ids
-    ]
+    return [{'gateway_id': gateway_id} for gateway_id in gateway_ids]
 
 
 def test_all_connected_and_hybrid_is_green():
@@ -141,10 +135,7 @@ def test_traffic_readiness_weights_gateways_by_access_volume():
         ['gw-1', 'gw-2'],
         READERS,
         [],
-        traffic_counts=[
-            {'gateway_id': 'gw-1', 'key_exchange': 'X25519MLKEM768', 'count': 9},
-            {'gateway_id': 'gw-2', 'key_exchange': 'X25519', 'count': 1},
-        ],
+        traffic_counts={'gw-1': 9, 'gw-2': 1},
     )
 
     assert summary['readiness'] == 0.9
@@ -160,43 +151,13 @@ def test_unknown_and_offline_traffic_counts_as_non_pqc():
         ['gw-1', 'gw-2', 'gw-3'],
         READERS,
         [],
-        traffic_counts=[
-            {'gateway_id': 'gw-1', 'key_exchange': 'X25519MLKEM768', 'count': 2},
-            {'gateway_id': 'gw-2', 'key_exchange': None, 'count': 2},
-            {'gateway_id': 'gw-3', 'key_exchange': None, 'count': 2},
-        ],
+        traffic_counts={'gw-1': 2, 'gw-2': 2, 'gw-3': 2},
     )
 
     assert summary['readiness'] == 0.333
     assert summary['non_pqc_traffic_share'] == 0.667
     assert summary['unknown'][0]['traffic_share'] == 0.333
     assert summary['offline'][0]['traffic_share'] == 0.333
-
-
-def test_readiness_uses_event_encryption_across_upgrades_and_disconnects():
-    traffic = [
-        {'gateway_id': 'gw-1', 'key_exchange': 'X25519', 'count': 3},
-        {'gateway_id': 'gw-1', 'key_exchange': 'X25519MLKEM768', 'count': 1},
-        {'gateway_id': 'gw-2', 'key_exchange': 'X25519MLKEM768', 'count': 4},
-        {'gateway_id': 'gw-1', 'key_exchange': None, 'count': 2},
-    ]
-    for connected in (
-        gateways(**{'gw-1': HYBRID}),
-        [],
-        gateways(**{'gw-1': CLASSICAL}),
-    ):
-        summary = summarize(connected, ['gw-1', 'gw-2'], [], [], traffic_counts=traffic)
-        assert summary['readiness'] == 0.5
-        assert summary['non_pqc_traffic_share'] == 0.5
-        assert summary['classical_traffic_share'] == 0.3
-
-
-def test_legacy_events_remain_unknown_even_when_gateway_is_hybrid():
-    summary = summarize(
-        gateways(**{'gw-1': HYBRID}), ['gw-1'], [], [{'gateway_id': 'gw-1'}]
-    )
-    assert summary['readiness'] == 0
-    assert summary['non_pqc_traffic_share'] == 1
 
 
 @pytest.mark.parametrize(

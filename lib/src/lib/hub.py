@@ -1,7 +1,6 @@
 import json
 import logging
 import threading
-from contextvars import ContextVar
 from datetime import UTC, datetime
 
 from websockets.asyncio.server import ServerConnection
@@ -30,13 +29,6 @@ class Hub:
         self._lock = threading.Lock()
         # client ID -> (connection, connected since, key-exchange group)
         self._clients: dict[str, tuple[ServerConnection, str, str | None]] = {}
-        self._request_group: ContextVar[str | None] = ContextVar(
-            'request_group', default=None
-        )
-
-    def request_key_exchange(self) -> str | None:
-        """Key exchange of the connection handling this request, even during reconnects."""
-        return self._request_group.get()
 
     def connected(self) -> list[dict]:
         with self._lock:
@@ -55,7 +47,6 @@ class Hub:
         client_id = ws.request.headers.get(self.id_header, 'unknown')
         since = datetime.now(UTC).isoformat(timespec='seconds')
         group = tls.negotiated_group(ws.transport.get_extra_info('ssl_object'))
-        token = self._request_group.set(group)
         with self._lock:
             self._clients[client_id] = (ws, since, group)
         log.info(
@@ -70,7 +61,6 @@ class Hub:
         except ConnectionClosed:
             pass
         finally:
-            self._request_group.reset(token)
             with self._lock:
                 if self._clients.get(client_id, (None,))[0] is ws:
                     del self._clients[client_id]

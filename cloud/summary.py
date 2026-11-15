@@ -9,8 +9,6 @@ import re
 from collections import Counter
 from datetime import timedelta
 
-from lib.tls import is_post_quantum
-
 # The rolling traffic window used by the migration and security scores.
 TRAFFIC_WINDOW = timedelta(hours=1)
 
@@ -36,17 +34,18 @@ def _gateway_groups(online: dict[str, dict], known: list[str]) -> dict[str, list
     }
 
 
-def _traffic_summary(events: list[dict]) -> dict:
-    """Use recorded encryption at event time; unknown events count as non-PQC."""
-    counts = Counter()
-    for event in events:
-        counts[is_post_quantum(event.get('key_exchange'))] += event.get('count', 1)
-    total = sum(counts.values())
+def _traffic_summary(online: dict[str, dict], traffic_at: Counter) -> dict:
+    """Summarize traffic, treating anything not confirmed hybrid as non-PQC."""
+    total = sum(traffic_at.values())
+    non_pqc = sum(
+        count
+        for gateway_id, count in traffic_at.items()
+        if online.get(gateway_id, {}).get('post_quantum') is not True
+    )
     return {
         'total': total,
-        'readiness': _share(counts[True], total),
-        'non_pqc_share': _share(counts[False] + counts[None], total),
-        'classical_share': _share(counts[False], total),
+        'readiness': _share(total - non_pqc, total),
+        'non_pqc_share': _share(non_pqc, total),
     }
 
 
@@ -55,25 +54,26 @@ def summarize(
     known_ids: list[str],
     readers: list[dict],
     events: list[dict],
-    traffic_counts: list[dict] | None = None,
+    traffic_counts: dict[str, int] | None = None,
 ) -> dict:
     """Traffic readiness, gateway coverage, status and risks.
 
     connected: GatewayHub.connected() rows (id, post_quantum, key_exchange, ...)
     known_ids: gateway IDs in the database
     readers: Database.readers() rows (id, gateway_id, zone_name)
-    events: access events (gateway_id, key_exchange), unless traffic_counts is supplied
-    traffic_counts: rows (gateway_id, key_exchange, count) within the traffic window
+    events: access events (gateway_id, ...), unless traffic_counts is supplied
+    traffic_counts: event counts by gateway within the traffic window
     """
     online = {gateway['id']: gateway for gateway in connected}
     known = sorted(set(known_ids) | set(online), key=_natural)
     readers_at = Counter(reader['gateway_id'] for reader in readers)
-    window_events = traffic_counts if traffic_counts is not None else events
-    traffic_at = Counter()
-    for event in window_events:
-        traffic_at[event['gateway_id']] += event.get('count', 1)
+    traffic_at = (
+        Counter(traffic_counts)
+        if traffic_counts is not None
+        else Counter(event['gateway_id'] for event in events)
+    )
     groups = _gateway_groups(online, known)
-    traffic = _traffic_summary(window_events)
+    traffic = _traffic_summary(online, traffic_at)
 
     def detail(gateway_id: str) -> dict:
         gateway = online.get(gateway_id, {})
@@ -99,7 +99,9 @@ def summarize(
         'classical': [detail(g) for g in groups['classical']],
         'unknown': [detail(g) for g in groups['unknown']],
         'offline': [detail(g) for g in groups['offline']],
-        'classical_traffic_share': traffic['classical_share'],
+        'classical_traffic_share': _share(
+            sum(traffic_at[g] for g in groups['classical']), traffic['total']
+        ),
         'non_pqc_traffic_share': traffic['non_pqc_share'],
         # What switching the cloud to KEY_EXCHANGE=hybrid-only would cut off.
         'hybrid_only_disconnects': {
@@ -149,10 +151,7 @@ def _risks(summary: dict) -> list[dict]:
     if summary['classical']:
         share = summary['classical_traffic_share']
         traffic = (
-            f" Across all gateways, {share:.0%} of last hour's door traffic "
-            'was recorded with classical key exchange.'
-            if share
-            else ''
+            f"; they carry {share:.0%} of last hour's door traffic" if share else ''
         )
         risks.append(
             {
@@ -160,7 +159,7 @@ def _risks(summary: dict) -> list[dict]:
                 'title': f'{gateways["classical"]} of {_plural(gateways["connected"], "gateway")}'
                 f' {"uses" if gateways["classical"] == 1 else "use"} classical encryption',
                 'detail': 'Their traffic could be recorded now and decrypted by a future '
-                f'quantum computer.{traffic}',
+                f'quantum computer{traffic}.',
                 'gateways': [g['id'] for g in summary['classical']],
             }
         )

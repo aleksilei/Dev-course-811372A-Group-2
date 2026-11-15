@@ -19,10 +19,6 @@ class GatewayHub(Hub):
         if isinstance(key_uuid, str) and isinstance(reader_id, str):
             # In a thread: SQLite may wait for a lock (e.g. held by sqlite-web).
             result = await asyncio.to_thread(
-                self.db.authorize,
-                key_uuid,
-                reader_id,
-                client_id,
-                self.request_key_exchange(),
+                self.db.authorize, key_uuid, reader_id, client_id
             )
         return {'request_id': request.get('request_id'), 'result': result}

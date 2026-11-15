@@ -99,7 +99,6 @@ class PanelHandler(BaseHTTPRequestHandler):
             self._send_json(self.server.gateways.connected())
         elif url.path == '/api/summary':
             db = self.server.db
-            now = datetime.now(UTC)
             self._send_json(
                 summarize(
                     self.server.gateways.connected(),
@@ -107,8 +106,9 @@ class PanelHandler(BaseHTTPRequestHandler):
                     db.readers(),
                     [],
                     traffic_counts=db.event_counts_since(
-                        (now - TRAFFIC_WINDOW).isoformat(timespec='seconds'),
-                        now.isoformat(timespec='seconds'),
+                        (datetime.now(UTC) - TRAFFIC_WINDOW).isoformat(
+                            timespec='seconds'
+                        )
                     ),
                 )
             )

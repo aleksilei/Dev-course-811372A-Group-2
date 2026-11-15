@@ -77,13 +77,10 @@ the stakeholders disagree, such as when to turn off classical fallback). The
 views are drawn from `GET /api/summary` (`summary.py`), where the readiness
 score and status rules live:
 
-- **PQC traffic readiness:** the share of access events in the last hour recorded
-  with post-quantum hybrid key exchange on the gateway-to-cloud connection.
-  Unknown key exchange (including older events without a recorded group) counts as non-PQC;
+- **PQC traffic readiness:** the share of access events in the last hour handled
+  by a connected gateway confirmed to use post-quantum hybrid key exchange.
+  Events from gateways with unknown or offline key exchange count as non-PQC;
   no events in the window means the score is unavailable (`null`).
-  Each event keeps its connection's negotiated group, so reconnecting, upgrading
-  or disconnecting a gateway does not change the classification of earlier traffic.
-  Existing databases are upgraded automatically without deleting access history.
 - **Gateway coverage:** the share of connected gateways confirmed to use
   post-quantum hybrid key exchange (offline gateways are not counted).
 - **Status:** green when every known gateway is connected and on hybrid; red
