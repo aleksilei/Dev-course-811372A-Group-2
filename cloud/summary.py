@@ -2,7 +2,7 @@
 
 summarize() is a pure function of what the cloud knows right now: the
 connected gateways, the gateways and readers in the database, and the recent
-access traffic. It holds the readiness scores (SCRUM-13) and the status rules.
+access traffic. It holds the readiness scores (SCRUM-11) and the status rules.
 """
 
 import re
