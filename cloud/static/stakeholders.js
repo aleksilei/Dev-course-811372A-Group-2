@@ -1,8 +1,8 @@
 'use strict';
 
 // Tabs (#operations, #stakeholders/<view>) and the stakeholder views, drawn
-// from /api/summary and /api/devices. Loaded after app.js, whose $() and
-// getJSON() it uses.
+// from /api/summary and /api/devices. Loaded after app.js, whose $(),
+// getJSON(), redraw() and connectionLabel() it uses.
 
 const SUMMARY_MS = 5000;
 const DEFAULT_VIEW = 'cio';
@@ -68,17 +68,13 @@ function deviceStatus(devices) {
   if (!devices) return [el('p', { text: 'Loading…' })];
   const own = (device) => device.links[0];
   const upstream = (device) => (device.type === 'reader' ? device.links[1] : null);
-  const notes = (device) => [
-    device.registered ? null : 'not registered',
-    device.type === 'reader' && device.state !== 'connected' ? device.state : null,
-  ].filter(Boolean).join(', ');
   return [
     el('h3', { text: 'Encryption status of every device' }),
     el('p', { className: 'hint', text: `Gateways: ${statusCounts(devices.counts.gateway, devices.statuses)}. `
       + `Readers: ${statusCounts(devices.counts.reader, devices.statuses)}. A device is as strong as its `
       + 'weakest link: reader traffic crosses the classical reader → gateway hop (per the spec) and its '
       + "gateway's link to the cloud." }),
-    table(['Device', 'Type', 'Gateway', 'Status', 'Own link', "Gateway's link to the cloud", 'Notes'],
+    table(['Device', 'Type', 'Gateway', 'Status', 'Own link', "Gateway's link to the cloud", 'Connection'],
       devices.devices.map((device) => [
         device.id,
         device.type,
@@ -86,7 +82,7 @@ function deviceStatus(devices) {
         { text: device.status, className: DEVICE_STATUS[device.status] },
         linkText(own(device)),
         device.type === 'reader' ? linkText(upstream(device)) : '–',
-        notes(device) || '–',
+        connectionLabel(device), // from app.js, as in the Readers list
       ])),
     el('p', { className: 'hint', text: `This control panel: ${linkText(devices.panel)}.` }),
   ];

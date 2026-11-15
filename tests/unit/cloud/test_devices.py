@@ -19,7 +19,12 @@ def gateway(gateway_id, group, readers=None):
         'post_quantum': 'MLKEM' in group.upper() if group else None,
         'readers': None
         if readers is None
-        else [{'id': r, **TLS13, 'key_exchange': g} for r, g in readers],
+        else [
+            {'id': r, 'address': '10.10.0.9', 'since': 'T1', **TLS13, 'key_exchange': g}
+            for r, g in readers
+        ],
+        'address': '172.18.0.4',
+        'since': 'T0',
     }
 
 
@@ -166,3 +171,31 @@ def test_the_panel_link_is_the_requests_own_connection():
         'key_exchange': 'X25519',
         'post_quantum': False,
     }
+
+
+def test_rows_carry_what_the_readers_list_needs():
+    connected = [
+        gateway('gw-1', 'X25519MLKEM768', []),
+        gateway('gw-2', 'X25519', [('rd-1', 'X25519'), ('rd-99', 'X25519')]),
+    ]
+
+    rows = by_id(devices(connected, ['gw-1', 'gw-2'], READERS[:2]))
+
+    gw1 = rows['gateway', 'gw-1']
+    assert (gw1['address'], gw1['since']) == ('172.18.0.4', 'T0')
+    # Registered under gw-1, connected through gw-2.
+    rd1 = rows['reader', 'rd-1']
+    assert (rd1['gateway'], rd1['registered_gateway'], rd1['zone_name']) == (
+        'gw-2',
+        'gw-1',
+        'front-door',
+    )
+    assert (rd1['address'], rd1['since']) == ('10.10.0.9', 'T1')
+    # Not connected: its database entry, but no connection details.
+    rd2 = rows['reader', 'rd-2']
+    assert (rd2['registered_gateway'], rd2['zone_name']) == ('gw-1', 'employee-door')
+    assert (rd2['address'], rd2['since']) == (None, None)
+    # Unregistered: no database entry.
+    rd99 = rows['reader', 'rd-99']
+    assert (rd99['registered_gateway'], rd99['zone_name']) == (None, None)
+    assert rd99['gateway'] == 'gw-2'
