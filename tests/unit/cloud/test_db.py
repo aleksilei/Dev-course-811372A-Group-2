@@ -65,6 +65,87 @@ def test_events_are_newest_first_and_filterable(db):
     assert len(db.events(limit=2)) == 2
 
 
+def test_event_counts_since_counts_accesses_per_gateway(db):
+    with sqlite3.connect(db.path) as conn:
+        conn.executemany(
+            'INSERT INTO ACCESS_EVENTS '
+            '(timestamp, key_uuid, reader_id, zone_name, gateway_id, result) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            [
+                (
+                    '2026-01-01T10:00:00+00:00',
+                    'key-alice',
+                    'rd-1',
+                    None,
+                    'gw-old',
+                    'pass',
+                ),
+                (
+                    '2026-01-01T11:00:00+00:00',
+                    'key-alice',
+                    'rd-1',
+                    None,
+                    'gw-1',
+                    'pass',
+                ),
+                ('2026-01-01T11:30:00+00:00', 'key-bob', 'rd-2', None, 'gw-1', 'fail'),
+                ('2026-01-01T11:45:00+00:00', 'key-bob', 'rd-3', None, 'gw-2', 'pass'),
+            ],
+        )
+
+    assert db.event_counts_since(
+        '2026-01-01T11:00:00+00:00', '2026-01-01T11:30:00+00:00'
+    ) == [{'gateway_id': 'gw-1', 'key_exchange': None, 'count': 2}]
+
+
+def test_traffic_counts_preserve_encryption_for_each_gateway(db):
+    db.authorize('key-alice', 'rd-1', 'gw-1', 'X25519')
+    db.authorize('key-alice', 'rd-1', 'gw-1', 'X25519MLKEM768')
+    db.authorize('key-alice', 'rd-1', 'gw-1')
+    counts = db.event_counts_since('2000-01-01', '2100-01-01')
+    assert {row['key_exchange']: row['count'] for row in counts} == {
+        None: 1,
+        'X25519': 1,
+        'X25519MLKEM768': 1,
+    }
+
+
+def test_traffic_window_has_no_500_event_limit(db):
+    with sqlite3.connect(db.path) as conn:
+        conn.executemany(
+            'INSERT INTO ACCESS_EVENTS '
+            '(timestamp, key_uuid, reader_id, gateway_id, result, key_exchange) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            [
+                (
+                    '2026-01-01T11:30:00+00:00',
+                    'key-alice',
+                    'rd-1',
+                    'gw-1',
+                    'pass',
+                    'X25519MLKEM768',
+                )
+            ]
+            * 600,
+        )
+    assert db.event_counts_since(
+        '2026-01-01T11:00:00+00:00', '2026-01-01T12:00:00+00:00'
+    ) == [{'gateway_id': 'gw-1', 'key_exchange': 'X25519MLKEM768', 'count': 600}]
+
+
+def test_existing_database_is_migrated_without_reclassifying_old_events(db):
+    db.authorize('key-alice', 'rd-1', 'gw-1')
+    with sqlite3.connect(db.path) as conn:
+        conn.execute('ALTER TABLE ACCESS_EVENTS DROP COLUMN key_exchange')
+    db.init()
+    db.init()  # The migration is safe to run again.
+    assert db.event_counts_since('2000-01-01', '2100-01-01') == [
+        {'gateway_id': 'gw-1', 'key_exchange': None, 'count': 1},
+    ]
+    db.authorize('key-alice', 'rd-1', 'gw-1', 'X25519MLKEM768')
+    assert len(db.events()) == 2
+
+
 def test_readers_lists_gateway_and_zone(db):
     assert db.readers() == [
         {'id': 'rd-1', 'gateway_id': 'gw-1', 'zone_name': 'front-door'},

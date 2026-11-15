@@ -299,3 +299,7 @@ def test_summary_api_reports_offline_seed_gateways(get):
     }
     assert summary['status'] == 'red'
     assert summary['readers'] == 5
+    assert summary['readiness'] is None
+    assert summary['gateway_coverage'] is None
+    assert summary['non_pqc_traffic_share'] is None
+    assert summary['recent_events'] == 0

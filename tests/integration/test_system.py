@@ -169,3 +169,26 @@ async def test_readers_fail_closed_when_the_cloud_goes_down(running_system, wait
 
         assert await reader.authorize('key-alice') is False
         await reader.close()
+
+
+@pytest.mark.parametrize(('mode', 'expected'), [('hybrid', 1.0), ('classical', 0.0)])
+async def test_readiness_uses_recorded_tls_after_gateway_disconnects(
+    running_system, wait_until, monkeypatch, mode, expected
+):
+    monkeypatch.setenv('KEY_EXCHANGE', mode)
+    async with running_system() as system:
+        reader = system.reader('rd-1')
+        assert await reader.authorize('key-alice') is True
+        await reader.close()
+
+        before = await asyncio.to_thread(system.panel_api, 'summary')
+        assert before['readiness'] == expected
+        assert before['recent_events'] == 1
+
+        system.cloud.close()
+        await wait_until(lambda: not system.link.connected)
+
+        after = await asyncio.to_thread(system.panel_api, 'summary')
+        assert after['gateways']['connected'] == 0
+        assert after['readiness'] == expected
+        assert after['non_pqc_traffic_share'] == 1 - expected
