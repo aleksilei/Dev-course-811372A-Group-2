@@ -90,6 +90,8 @@ def _gateway_rows(online: dict[str, dict], known: set[str]) -> list[dict]:
                 'registered': gateway_id in known,
                 'state': 'connected' if gateway else 'offline',
                 'status': _status(gateway_id in known, gateway is not None, links),
+                'address': (gateway or {}).get('address'),
+                'since': (gateway or {}).get('since'),
                 'links': links,
             }
         )
@@ -115,7 +117,7 @@ def _reader_rows(online: dict[str, dict], readers: list[dict]) -> list[dict]:
         set(registered) | set(reported),
         key=lambda r: (_natural(gateway_of(r) or ''), _natural(r)),
     ):
-        links = []
+        links, link = [], {}
         if reader_id in reported:
             via, link = reported[reader_id]
             links = [_link(READER_LINK, link), _link(GATEWAY_LINK, online[via])]
@@ -132,8 +134,13 @@ def _reader_rows(online: dict[str, dict], readers: list[dict]) -> list[dict]:
                 'type': 'reader',
                 'gateway': gateway_of(reader_id),
                 'registered': reader_id in registered,
+                # Where the database puts it, and its zone (None if unregistered).
+                'registered_gateway': registered.get(reader_id, {}).get('gateway_id'),
+                'zone_name': registered.get(reader_id, {}).get('zone_name'),
                 'state': state,
                 'status': status,
+                'address': link.get('address'),
+                'since': link.get('since'),
                 'links': links,
             }
         )

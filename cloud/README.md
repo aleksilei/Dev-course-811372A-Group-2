@@ -128,17 +128,17 @@ The Operations tab is laid out to stay usable with many readers and gateways (tr
   readers are connected and the gateway's connection state. Groups can be
   opened and closed; with more than 20 readers they start closed, and a text
   search opens the groups it matches in.
-- Each reader's **Connection**, as its gateway reports it (hover for the
-  address and key exchange):
+- Each reader's **Connection**, from `/api/devices` (hover for the address
+  and key exchange), worded the same as in the security officer's device
+  list:
   - `connected since …` (green);
   - `connected via gw-X since …` (amber): connected through another gateway
     than the database says;
-  - `not registered: its scans fail` (amber): connected, but not in the
+  - `…, not registered: its scans fail` (amber): connected, but not in the
     database. Listed under the gateway it's connected to, and left out of
     the matrices;
-  - `not connected` (red);
-  - `unknown` (grey): its gateway isn't connected, or is from before reader
-    lists and doesn't report them.
+  - `not connected` (red): its gateway reports it isn't;
+  - `unknown` (grey): its gateway is offline, or doesn't report its readers.
 
   Reader IDs are taken on trust, like gateway IDs. Only live connections are
   kept, in memory: nothing about past connections.
@@ -163,7 +163,7 @@ Readers, gateways and the groups themselves are edited through sqlite-web
 | Endpoint | Returns |
 |---|---|
 | `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical), `tls_version` and `cipher` of the connection, and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`), or `null` if the gateway hasn't reported them |
-| `GET /api/devices` | every gateway and reader: `statuses`, `counts` per type (`gateway`, `reader`) and status, `devices` (`id`, `type`, `gateway`, `registered`, `state`, `status`, and `links`: each `name`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`; a reader's own link first, then its gateway's) and `panel`, the request's own link |
+| `GET /api/devices` | every gateway and reader: `statuses`, `counts` per type (`gateway`, `reader`) and status, `devices` (`id`, `type`, `gateway`, `registered`, `state`, `status`, `address` and `since` of its connection, for readers `registered_gateway` and `zone_name` from the database, and `links`: each `name`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`; a reader's own link first, then its gateway's) and `panel`, the request's own link |
 | `GET /api/summary` | the stakeholder views' data: `readiness` (traffic weighted, 0–1 or `null` with no recent events), `gateway_coverage` (0–1 or `null` with no connected gateways), `non_pqc_traffic_share`, `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `classical`, `unknown`, `offline`), the `classical`, `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` (events in the last hour) and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
 | `GET /api/readers` | readers with their `gateway_id` and `zone_name` |
 | `GET /api/events?key=&reader=` | newest 100 access events, optionally filtered |
