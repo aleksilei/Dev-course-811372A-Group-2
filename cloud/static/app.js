@@ -55,6 +55,9 @@ function fillTable(tbody, rows, columns) {
     for (const column of columns) {
       const td = document.createElement('td');
       td.textContent = row[column] ?? '–';
+      // Optional per-cell styling and tooltip: row.<column>_class, _title.
+      if (row[`${column}_class`]) td.className = row[`${column}_class`];
+      if (row[`${column}_title`]) td.title = row[`${column}_title`];
       if (column === 'result') td.className = row.result;
       if (column === 'key_exchange') {
         td.className = KEY_EXCHANGE[row.post_quantum]?.className ?? '';
@@ -87,13 +90,18 @@ function fillGateways(gateways) {
   $('key-exchange-summary').textContent = summary;
 }
 
-function fillSummary({ gateways, gatewayIds, readers, keys }) {
+function fillSummary({ gateways, gatewayIds, rows, keys }) {
   const classical = gateways.filter((gateway) => gateway.post_quantum === false).length;
+  const registered = rows.filter((row) => !row.unregistered);
+  const online = registered.filter((row) => row.connected).length;
+  const unregistered = rows.length - registered.length;
   const tiles = [
     ['Gateways connected', `${gateways.length} of ${gatewayIds.length}`,
       gateways.length < gatewayIds.length ? 'warn' : ''],
     ['Classical key exchange', classical, classical > 0 ? 'warn' : 'pass'],
-    ['Readers', readers.length, ''],
+    ['Readers connected', `${online} of ${registered.length}`,
+      online < registered.length ? 'warn' : ''],
+    ...(unregistered > 0 ? [['Unregistered readers', unregistered, 'warn']] : []),
     ['Keys', keys.length, ''],
   ];
   $('summary').replaceChildren(...tiles.map(([label, value, className]) => {
@@ -126,6 +134,59 @@ function shownReaders(readers) {
   ));
 }
 
+// Reader ID -> its connection, from the reader lists the gateways report.
+function readerConnections(gateways) {
+  const connections = new Map();
+  for (const gateway of gateways) {
+    for (const reader of gateway.readers ?? []) {
+      connections.set(reader.id, { ...reader, via: gateway.id });
+    }
+  }
+  return connections;
+}
+
+// How a reader's connection is shown: {connection, connection_class, ...}.
+function connectionOf(reader, connections, connected) {
+  const connection = connections.get(reader.id);
+  if (connection) {
+    const elsewhere = connection.via !== reader.gateway_id;
+    let text = `connected since ${connection.since ?? '?'}`;
+    if (reader.unregistered) text += ', not registered: its scans fail';
+    else if (elsewhere) text = `connected via ${connection.via} since ${connection.since ?? '?'}`;
+    return {
+      connected: true,
+      connection: text,
+      connection_class: reader.unregistered || elsewhere ? 'warn' : 'pass',
+      connection_title: `from ${connection.address ?? '?'}, key exchange ${connection.key_exchange ?? '?'}`,
+    };
+  }
+  const gateway = connected.get(reader.gateway_id);
+  if (gateway?.readers) {
+    return { connected: false, connection: 'not connected', connection_class: 'fail' };
+  }
+  return {
+    connected: false,
+    connection: gateway
+      ? "unknown: gateway doesn't report its readers"
+      : 'unknown: gateway not connected',
+    connection_class: 'unknown',
+  };
+}
+
+// The registered readers, and the connected ones the database doesn't know
+// (under the gateway they're connected to), each with its connection.
+function readerRows(readers, connections, connected) {
+  const registered = new Set(readers.map((reader) => reader.id));
+  const unregistered = [...connections.values()]
+    .filter((connection) => !registered.has(connection.id))
+    .map((connection) => ({
+      id: connection.id, gateway_id: connection.via, zone_name: null, unregistered: true,
+    }));
+  return [...readers, ...unregistered]
+    .map((reader) => ({ ...reader, ...connectionOf(reader, connections, connected) }))
+    .sort((a, b) => byId(a.gateway_id ?? '', b.gateway_id ?? '') || byId(a.id, b.id));
+}
+
 function isOpen(gatewayId, totalReaders) {
   if ($('show-text').value.trim()) return true; // show what the search found
   return openGateways.get(gatewayId) ?? totalReaders <= COLLAPSE_ABOVE;
@@ -147,14 +208,17 @@ function fillReaders(readers, totalReaders, connected) {
     state.className = gateway ? KEY_EXCHANGE[gateway.post_quantum]?.className ?? '' : 'fail';
     const count = document.createElement('span');
     count.className = 'count';
-    count.textContent = `${members.length} reader${members.length === 1 ? '' : 's'}`;
+    const readers = `${members.length} reader${members.length === 1 ? '' : 's'}`;
+    count.textContent = gateway?.readers
+      ? `${members.filter((member) => member.connected).length} of ${readers} connected`
+      : readers;
     summary.append(name, count, state);
     // Remember what the admin chose, not the automatic opening of a search.
     summary.addEventListener('click', () => openGateways.set(gatewayId, !details.open));
 
     const table = document.createElement('table');
-    table.createTHead().innerHTML = '<tr><th>Reader</th><th>Zone</th></tr>';
-    fillTable(table.createTBody(), members, ['id', 'zone_name']);
+    table.createTHead().innerHTML = '<tr><th>Reader</th><th>Zone</th><th>Connection</th></tr>';
+    fillTable(table.createTBody(), members, ['id', 'zone_name', 'connection']);
     details.append(summary, table);
     return details;
   });
@@ -291,29 +355,29 @@ let latest = null;
 function draw() {
   if (!latest) return;
   const { gateways, events, access } = latest;
-  const readers = [...latest.readers].sort(
-    (a, b) => byId(a.gateway_id ?? '', b.gateway_id ?? '') || byId(a.id, b.id),
-  );
   const connected = new Map(gateways.map((gateway) => [gateway.id, gateway]));
+  // Registered readers, plus connected ones the database doesn't know.
+  const rows = readerRows(latest.readers, readerConnections(gateways), connected);
   const gatewayIds = [...new Set([
-    ...readers.map((reader) => reader.gateway_id).filter(Boolean), ...connected.keys(),
+    ...rows.map((reader) => reader.gateway_id).filter(Boolean), ...connected.keys(),
   ])].sort(byId);
   const keys = [...new Set([...access.keys, ...newKeys])].sort(byId);
-  const shown = shownReaders(readers);
+  const shownRows = shownReaders(rows);
+  const shown = shownRows.filter((row) => !row.unregistered);
 
-  redraw('summary', [gateways, gatewayIds, readers.length, keys], () => fillSummary(
-    { gateways, gatewayIds, readers, keys },
+  redraw('summary', [gateways, gatewayIds, rows, keys], () => fillSummary(
+    { gateways, gatewayIds, rows, keys },
   ));
   redraw('gateway-choice', gatewayIds, () => fillGatewayChoice(gatewayIds));
-  $('show-count').textContent = shown.length === readers.length
-    ? `Showing all ${readers.length} readers`
-    : `Showing ${shown.length} of ${readers.length} readers`;
+  $('show-count').textContent = shownRows.length === rows.length
+    ? `Showing all ${rows.length} readers`
+    : `Showing ${shownRows.length} of ${rows.length} readers`;
   redraw('gateways', gateways, () => fillGateways(
     [...gateways].sort((a, b) => byId(a.id, b.id)),
   ));
   const opened = [...openGateways];
-  redraw('readers', [shown, opened, $('show-text').value.trim() !== '', gateways], () => (
-    fillReaders(shown, readers.length, connected)
+  redraw('readers', [shownRows, opened, $('show-text').value.trim() !== '', gateways], () => (
+    fillReaders(shownRows, rows.length, connected)
   ));
   fillAccess(access, keys, shown);
   redraw('events', events, () => fillTable($('events'), events,

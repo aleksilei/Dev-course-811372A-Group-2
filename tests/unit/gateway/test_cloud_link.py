@@ -100,6 +100,15 @@ async def test_reconnects_after_losing_the_cloud(wait_until):
         assert (await link.request({'id': 'key-bob'}))['result'] == 'pass'
 
 
+async def test_requests_fail_at_once_when_the_cloud_connection_drops(wait_until):
+    async def cloud_hanging_up_on_the_first_request(ws):
+        await ws.recv()
+
+    async with linked_to(cloud_hanging_up_on_the_first_request, wait_until) as link:
+        async with asyncio.timeout(1):  # well before the 5 s request timeout
+            assert await link.request({'id': 'key-bob'}) == {'result': 'fail'}
+
+
 async def test_keeps_retrying_until_the_cloud_is_up(wait_until, caplog):
     with socket.socket() as reserved:
         reserved.bind(('127.0.0.1', 0))
@@ -183,3 +192,82 @@ async def test_only_the_first_reply_to_a_request_counts(wait_until):
     async with linked_to(cloud_answering_twice, wait_until) as link:
         assert (await link.request({'id': 'a'}))['result'] == 'pass'
         assert (await link.request({'id': 'b'}))['result'] == 'pass'
+
+
+READERS = [
+    {'id': 'rd-1', 'address': '10.10.0.2', 'since': 'now', 'key_exchange': 'X25519'}
+]
+
+
+def cloud_taking_reader_lists(received, result='ok'):
+    """A cloud that records each reader list and answers it with `result`."""
+
+    async def cloud(ws):
+        async for message in ws:
+            request = json.loads(message)
+            if request.get('type') == 'readers':
+                received.append(request['readers'])
+                answer = result
+            else:
+                answer = 'pass'
+            await ws.send(
+                json.dumps({'request_id': request['request_id'], 'result': answer})
+            )
+
+    return cloud
+
+
+async def test_reports_the_connected_readers(wait_until):
+    received = []
+
+    async with linked_to(cloud_taking_reader_lists(received), wait_until) as link:
+        link.report_readers(READERS)
+        await wait_until(lambda: received)
+
+        link.report_readers([])
+        await wait_until(lambda: len(received) == 2)
+
+    assert received == [READERS, []]
+
+
+async def test_sends_no_reader_list_until_there_is_one(wait_until):
+    received = []
+
+    async with linked_to(cloud_taking_reader_lists(received), wait_until) as link:
+        assert (await link.request({'id': 'key-bob'}))['result'] == 'pass'
+
+    assert not received
+
+
+async def test_reports_the_readers_again_after_reconnecting(wait_until):
+    received = []
+    taking = cloud_taking_reader_lists(received)
+    connections = []
+
+    async def cloud_dropping_first_connection(ws):
+        connections.append(ws)
+        if len(connections) == 1:
+            # Take the first list, then drop the connection.
+            request = json.loads(await ws.recv())
+            received.append(request['readers'])
+            return
+        await taking(ws)
+
+    async with linked_to(cloud_dropping_first_connection, wait_until) as link:
+        link.report_readers(READERS)
+        await wait_until(lambda: len(received) == 2)
+
+    assert received == [READERS, READERS]
+    assert len(connections) == 2
+
+
+async def test_an_older_cloud_refusing_reader_lists_is_only_logged(wait_until, caplog):
+    received = []
+    older_cloud = cloud_taking_reader_lists(received, result='fail')
+
+    async with linked_to(older_cloud, wait_until) as link:
+        link.report_readers(READERS)
+        await wait_until(lambda: 'did not take the list' in caplog.text)
+
+        assert (await link.request({'id': 'key-bob'}))['result'] == 'pass'
+        assert link.connected

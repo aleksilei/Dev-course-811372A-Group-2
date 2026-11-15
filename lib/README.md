@@ -102,7 +102,10 @@ and implements `async respond(request, client_id) -> reply`. `Hub.handle` is the
 `websockets` connection handler: it registers the client, answers every JSON
 message with `respond()` (malformed JSON gets `{"result": "fail"}`), and lists
 live clients through `connected()`, with the key-exchange group each one
-negotiated. The ID is taken on trust.
+negotiated. The ID is taken on trust. A subclass can override `changed()`,
+called on the event loop whenever a client connects or disconnects: the
+gateway uses it to report its readers to the cloud, and the cloud to forget
+the readers of a gateway that disconnected.
 
 Everything WebSocket-related uses the `websockets` **asyncio** API, so all TLS
 I/O happens on one event-loop thread. The library's threaded API was dropped

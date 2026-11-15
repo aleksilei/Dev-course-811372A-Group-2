@@ -35,7 +35,8 @@ make run
 
 - Control panel: https://localhost:8444 (trust `data/certs/ca.pem` or accept
   the browser warning). It shows each connected gateway's key exchange, and
-  flags the classical ones.
+  flags the classical ones, and which readers are connected through each
+  gateway.
 - Database editor (sqlite-web): http://127.0.0.1:8080
 - Follow the readers deciding: `make logs SERVICE=reader-3`
 - `gateway-2` stands in for a gateway without ML-KEM (classical `X25519`

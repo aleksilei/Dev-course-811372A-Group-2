@@ -24,6 +24,17 @@ class EchoHub(Hub):
         return {'echo': request, 'from': client_id}
 
 
+class ChangeHub(EchoHub):
+    """Records the connected client IDs every time changed() is called."""
+
+    def __init__(self):
+        super().__init__()
+        self.changes = []
+
+    def changed(self):
+        self.changes.append([client['id'] for client in self.connected()])
+
+
 class FakeConnection:
     def __init__(self, headers, messages, group=None):
         self.request = SimpleNamespace(headers=headers)
@@ -125,6 +136,32 @@ async def test_reconnected_client_stays_listed_when_its_old_connection_closes(
     new.close()
     await new_task
     assert hub.connected() == []
+
+
+async def test_changed_is_called_when_a_client_connects_and_disconnects():
+    hub = ChangeHub()
+
+    await hub.handle(FakeConnection({'Test-Id': 'rd-1'}, ['{}']))
+
+    assert hub.changes == [['rd-1'], []]
+
+
+async def test_closing_a_replaced_connection_is_no_change(wait_until):
+    hub = ChangeHub()
+    old = OpenConnection({'Test-Id': 'gw-1'}, '10.0.0.1')
+    new = OpenConnection({'Test-Id': 'gw-1'}, '10.0.0.2')
+    old_task = asyncio.create_task(hub.handle(old))
+    await wait_until(hub.connected)
+    new_task = asyncio.create_task(hub.handle(new))
+    await wait_until(lambda: len(hub.changes) == 2)
+
+    old.close()
+    await old_task
+    assert hub.changes == [['gw-1'], ['gw-1']]
+
+    new.close()
+    await new_task
+    assert hub.changes == [['gw-1'], ['gw-1'], []]
 
 
 async def test_client_hanging_up_before_its_reply_is_unlisted():
