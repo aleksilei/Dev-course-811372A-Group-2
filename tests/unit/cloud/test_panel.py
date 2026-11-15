@@ -131,6 +131,25 @@ def test_gateways_api_is_empty_without_connections(get):
     assert json.loads(get('/api/gateways')[2]) == []
 
 
+def test_connections_api_returns_history_newest_first_and_filters_by_gateway(get, db):
+    db.gateway_connected(
+        'gw-1', '10.0.0.1', 'X25519', False, '2026-11-15T12:00:00+00:00'
+    )
+    db.gateway_connected(
+        'gw-2', '10.0.0.2', 'X25519MLKEM768', True, '2026-11-15T12:01:00+00:00'
+    )
+
+    status, content_type, body = get('/api/connections?gateway=gw-1')
+
+    assert (status, content_type) == (200, 'application/json')
+    [connection] = json.loads(body)
+    assert (connection['gateway_id'], connection['post_quantum']) == ('gw-1', False)
+    assert [row['gateway_id'] for row in json.loads(get('/api/connections')[2])] == [
+        'gw-2',
+        'gw-1',
+    ]
+
+
 def test_access_api(get, db):
     status, content_type, body = get('/api/access')
 

@@ -136,6 +136,52 @@ async def test_readers_are_forgotten_when_their_gateway_disconnects(db, wait_unt
     assert gateway['readers'] is None
 
 
+async def test_gateway_connection_is_recorded_and_closed_on_disconnect(db, wait_until):
+    hub = GatewayHub(db)
+    ws = GatewayConnection('gw-1', [])
+    ws.transport = SimpleNamespace(
+        get_extra_info={'ssl_object': SimpleNamespace(group=lambda: 'X25519')}.get
+    )
+    task = asyncio.create_task(hub.handle(ws))
+    await wait_until(hub.connected)
+
+    [connection] = db.gateway_connections('gw-1')
+    assert connection['address'] == '172.18.0.4'
+    assert connection['key_exchange'] == 'X25519'
+    assert connection['post_quantum'] is False
+    assert connection['disconnected_at'] is None
+
+    ws.close()
+    await task
+
+    [connection] = db.gateway_connections('gw-1')
+    assert connection['disconnected_at'] is not None
+
+
+async def test_overlapping_reconnects_keep_separate_session_history(db, wait_until):
+    hub = GatewayHub(db)
+    first = GatewayConnection('gw-1', [])
+    first_task = asyncio.create_task(hub.handle(first))
+    await wait_until(hub.connected)
+    second = GatewayConnection('gw-1', [])
+    second_task = asyncio.create_task(hub.handle(second))
+    await wait_until(lambda: len(db.gateway_connections('gw-1')) == 2)
+
+    first.close()
+    await first_task
+
+    connections = db.gateway_connections('gw-1')
+    assert len(connections) == 2
+    assert sum(row['disconnected_at'] is None for row in connections) == 1
+
+    second.close()
+    await second_task
+
+    connections = db.gateway_connections('gw-1')
+    assert len(connections) == 2
+    assert all(connection['disconnected_at'] is not None for connection in connections)
+
+
 async def test_keeps_only_the_known_string_fields_of_each_reader(db):
     hub = GatewayHub(db)
     reported = {'id': 'rd-9', 'address': 7, 'since': None, 'zone': 'x', 'extra': [1]}

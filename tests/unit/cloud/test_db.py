@@ -65,6 +65,47 @@ def test_events_are_newest_first_and_filterable(db):
     assert len(db.events(limit=2)) == 2
 
 
+def test_gateway_connections_store_session_details_and_can_be_filtered(db):
+    first = db.gateway_connected(
+        'gw-1', '10.0.0.1', 'X25519MLKEM768', True, '2026-11-15T12:00:00+00:00'
+    )
+    db.gateway_connected(
+        'gw-2', '10.0.0.2', 'X25519', False, '2026-11-15T12:01:00+00:00'
+    )
+    db.gateway_disconnected(first, '2026-11-15T12:02:00+00:00')
+
+    [connection] = db.gateway_connections('gw-1')
+    assert connection == {
+        'id': first,
+        'gateway_id': 'gw-1',
+        'address': '10.0.0.1',
+        'key_exchange': 'X25519MLKEM768',
+        'post_quantum': True,
+        'connected_at': '2026-11-15T12:00:00+00:00',
+        'disconnected_at': '2026-11-15T12:02:00+00:00',
+    }
+    assert [row['gateway_id'] for row in db.gateway_connections()] == ['gw-2', 'gw-1']
+
+
+def test_unknown_gateway_key_exchange_is_stored_as_unknown(db):
+    db.gateway_connected('gw-x', '10.0.0.3', None, None, '2026-11-15T12:00:00+00:00')
+
+    [connection] = db.gateway_connections()
+    assert (connection['key_exchange'], connection['post_quantum']) == (None, None)
+
+
+def test_startup_closes_sessions_left_open_by_previous_process(db):
+    connection_id = db.gateway_connected(
+        'gw-1', '10.0.0.1', 'X25519', False, '2026-11-15T12:00:00+00:00'
+    )
+
+    db.close_open_gateway_connections('2026-11-15T12:10:00+00:00')
+
+    [connection] = db.gateway_connections()
+    assert connection['id'] == connection_id
+    assert connection['disconnected_at'] == '2026-11-15T12:10:00+00:00'
+
+
 def test_readers_lists_gateway_and_zone(db):
     assert db.readers() == [
         {'id': 'rd-1', 'gateway_id': 'gw-1', 'zone_name': 'front-door'},

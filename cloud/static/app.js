@@ -124,6 +124,17 @@ function fillGatewayChoice(gatewayIds) {
   select.value = gatewayIds.includes(chosen) ? chosen : '';
 }
 
+function fillConnectionGatewayChoice(connections) {
+  const select = $('connection-gateway');
+  const chosen = select.value;
+  const gatewayIds = [...new Set([
+    ...[...select.options].map((option) => option.value).filter(Boolean),
+    ...connections.map((row) => row.gateway_id),
+  ])].sort(byId);
+  select.replaceChildren(new Option('All gateways', ''), ...gatewayIds.map((id) => new Option(id, id)));
+  select.value = gatewayIds.includes(chosen) ? chosen : '';
+}
+
 // The readers the toolbar's gateway and text filters let through.
 function shownReaders(readers) {
   const gateway = $('show-gateway').value;
@@ -354,7 +365,7 @@ let latest = null;
 
 function draw() {
   if (!latest) return;
-  const { gateways, events, access } = latest;
+  const { gateways, events, access, connections } = latest;
   const connected = new Map(gateways.map((gateway) => [gateway.id, gateway]));
   // Registered readers, plus connected ones the database doesn't know.
   const rows = readerRows(latest.readers, readerConnections(gateways), connected);
@@ -382,6 +393,14 @@ function draw() {
   fillAccess(access, keys, shown);
   redraw('events', events, () => fillTable($('events'), events,
     ['timestamp', 'key_uuid', 'reader_id', 'zone_name', 'gateway_id', 'result']));
+  if (window.location.hash === '#logs') {
+    fillConnectionGatewayChoice(connections);
+    redraw('connections', connections, () => fillTable($('connections'), connections.map((row) => ({
+      ...row,
+      key_exchange: row.key_exchange ?? 'unknown',
+      pqc: row.post_quantum === null ? 'unknown' : row.post_quantum ? 'yes' : 'no',
+    })), ['gateway_id', 'address', 'key_exchange', 'pqc', 'connected_at', 'disconnected_at']));
+  }
 }
 
 async function refresh() {
@@ -390,14 +409,19 @@ async function refresh() {
     const value = $(name).value.trim();
     if (value) filter.set(name, value);
   }
+  const selectedGateway = $('connection-gateway').value;
+  const connectionFilter = new URLSearchParams();
+  if (selectedGateway) connectionFilter.set('gateway', selectedGateway);
+  const onLogsTab = window.location.hash === '#logs';
   try {
-    const [gateways, readers, events, access] = await Promise.all([
+    const [gateways, readers, events, access, connections] = await Promise.all([
       getJSON('/api/gateways'),
       getJSON('/api/readers'),
       getJSON(`/api/events?${filter}`),
       getJSON('/api/access'),
+      onLogsTab ? getJSON(`/api/connections?${connectionFilter}`) : Promise.resolve([]),
     ]);
-    latest = { gateways, readers, events, access };
+    latest = { gateways, readers, events, access, connections };
     draw();
     $('status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {
@@ -407,6 +431,10 @@ async function refresh() {
 
 $('filter').addEventListener('input', refresh);
 $('filter').addEventListener('submit', (event) => event.preventDefault());
+$('connection-filter').addEventListener('input', refresh);
+$('connection-filter').addEventListener('submit', (event) => event.preventDefault());
+$('connection-gateway').addEventListener('change', refresh);
+window.addEventListener('hashchange', refresh);
 $('show').addEventListener('input', draw);
 $('show').addEventListener('submit', (event) => event.preventDefault());
 $('add-key').addEventListener('submit', (event) => {

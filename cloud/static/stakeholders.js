@@ -121,7 +121,7 @@ const VIEWS = {
         'What is blocking readiness: each classical, unknown or offline gateway and the readers behind it.',
       ],
       notYet: [
-        'Progress over time, and whether the migration will finish on time: needs the connection history (SCRUM-33).',
+        'A migration trend or completion forecast; the Logs tab provides connection records, not a trend.',
       ],
       wont: [
         'Keeping classical fallback until the 2028 replacements: a policy decision that conflicts with the '
@@ -168,11 +168,11 @@ const VIEWS = {
         'Which connections are still quantum-vulnerable, with the readers behind them and their share of traffic.',
         'No "green" while any classical connection remains.',
         'What turning off classical fallback would disconnect.',
+        'Current and past gateway sessions, with their addresses and key exchanges, in the Logs tab.',
       ],
       notYet: [
-        'Alerts on downgrade attempts (a gateway that used hybrid now connecting classically): needs the '
-          + 'connection history (SCRUM-33).',
-        'Past connections: the Logs tab (SCRUM-34).',
+        'Automatic alerts on downgrade attempts; the connection history makes changes visible but does not '
+          + 'raise an alarm.',
       ],
       wont: [
         'Disabling classical fallback on all connections this quarter: a policy decision that conflicts with the '
@@ -186,7 +186,7 @@ const VIEWS = {
 function route() {
   const [tab, view] = window.location.hash.slice(1).split('/');
   return {
-    tab: tab === 'stakeholders' ? 'stakeholders' : 'operations',
+    tab: ['stakeholders', 'logs'].includes(tab) ? tab : 'operations',
     view: VIEWS[view] ? view : DEFAULT_VIEW,
   };
 }
@@ -203,6 +203,7 @@ function drawView() {
   }
   $('tab-operations').hidden = tab !== 'operations';
   $('tab-stakeholders').hidden = tab !== 'stakeholders';
+  $('tab-logs').hidden = tab !== 'logs';
   if (tab !== 'stakeholders' || !latestSummary) return;
 
   const spec = VIEWS[view];

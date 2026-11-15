@@ -48,6 +48,8 @@ class Hub:
         client_id = ws.request.headers.get(self.id_header, 'unknown')
         since = datetime.now(UTC).isoformat(timespec='seconds')
         group = tls.negotiated_group(ws.transport.get_extra_info('ssl_object'))
+        address = ws.remote_address[0]
+        session = await self.client_connected(client_id, address, since, group)
         with self._lock:
             self._clients[client_id] = (ws, since, group)
         self.changed()
@@ -69,7 +71,18 @@ class Hub:
                     del self._clients[client_id]
             if removed:
                 self.changed()
+            await self.client_disconnected(session)
             log.info('%s disconnected', client_id)
+
+    # pylint: disable=unused-argument
+    async def client_connected(
+        self, client_id: str, address: str, since: str, group: str | None
+    ) -> object | None:
+        """Hook for subclasses that need to persist each individual session."""
+        return None
+
+    async def client_disconnected(self, session: object | None) -> None:
+        """Hook called when this specific websocket session ends."""
 
     async def respond(self, request: dict, client_id: str) -> dict:
         raise NotImplementedError

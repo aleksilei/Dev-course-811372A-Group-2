@@ -20,6 +20,7 @@ def main():
     setup_logging()
     db = Database(env('DB_PATH', '/data/master.db'))
     db.init()
+    db.close_open_gateway_connections()
     cert, key = (
         env('TLS_CERT', '/certs/server.pem'),
         env('TLS_KEY', '/certs/server.key'),

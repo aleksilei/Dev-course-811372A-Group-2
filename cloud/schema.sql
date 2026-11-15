@@ -33,3 +33,16 @@ CREATE TABLE IF NOT EXISTS ACCESS_EVENTS (
     gateway_id TEXT NOT NULL,
     result TEXT NOT NULL CHECK (result IN ('pass', 'fail'))
 );
+
+CREATE TABLE IF NOT EXISTS GATEWAY_CONNECTIONS (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gateway_id TEXT NOT NULL,
+    address TEXT NOT NULL,
+    key_exchange TEXT,
+    post_quantum INTEGER CHECK (post_quantum IN (0, 1) OR post_quantum IS NULL),
+    connected_at TEXT NOT NULL,
+    disconnected_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS gateway_connections_gateway_time
+    ON GATEWAY_CONNECTIONS (gateway_id, connected_at DESC, id DESC);

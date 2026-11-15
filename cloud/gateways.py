@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from cloud.db import Database
 from lib import tls
@@ -24,6 +25,26 @@ class GatewayHub(Hub):
         # gateway ID -> its connected readers, while the gateway is connected.
         # Gateways from before reader lists never report one.
         self._readers: dict[str, list[dict]] = {}
+
+    async def client_connected(
+        self, client_id: str, address: str, since: str, group: str | None
+    ) -> int:
+        """Persist this physical gateway connection, including duplicate IDs."""
+        return await asyncio.to_thread(
+            self.db.gateway_connected,
+            client_id,
+            address,
+            group,
+            tls.is_post_quantum(group),
+            since,
+        )
+
+    async def client_disconnected(self, session: object | None) -> None:
+        if isinstance(session, int):
+            disconnected_at = datetime.now(UTC).isoformat(timespec='seconds')
+            await asyncio.to_thread(
+                self.db.gateway_disconnected, session, disconnected_at
+            )
 
     def connected(self) -> list[dict]:
         """Hub.connected() rows, each with `readers`: the readers connected to
