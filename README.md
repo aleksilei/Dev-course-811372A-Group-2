@@ -101,6 +101,8 @@ when done. Device names, where its data lives and each site's traffic: see
 - Certificates are classical (ECDSA P-256) on every hop.
 - The control panel has no admin authentication.
 - Physical access to the reader VLAN is assumed to be safe.
+- Data at rest: the SQLite database (`data/cloud/master.db`) isn't encrypted;
+  the host it runs on is assumed to be sufficiently secured.
 - No gateway or cloud response caching for redundancy: the cloud being down
   means every door stays closed.
 

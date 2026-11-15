@@ -159,6 +159,32 @@ async def test_panel_lists_the_readers_connected_to_each_gateway(
     assert listed['address'] == '127.0.0.1'
 
 
+async def test_devices_api_shows_the_encryption_of_every_link(
+    running_system, wait_until
+):
+    def rd3():
+        rows = system.panel_api('devices')['devices']
+        return next(row for row in rows if row['id'] == 'rd-3')
+
+    async with running_system() as system:
+        reader = system.reader('rd-3')
+        await reader.authorize('key-bob')
+        await wait_until(lambda: rd3()['state'] == 'connected')
+        row = await asyncio.to_thread(rd3)
+        await reader.close()
+
+    own, upstream = row['links']
+    assert (own['name'], own['key_exchange'], own['tls_version']) == (
+        'reader → gateway',
+        'X25519',
+        'TLSv1.3',
+    )
+    assert own['cipher'].startswith('TLS_')
+    assert (upstream['name'], upstream['tls_version']) == ('gateway → cloud', 'TLSv1.3')
+    # The reader hop is classical, so the reader is too.
+    assert row['status'] == 'classical'
+
+
 async def test_readers_fail_closed_when_the_cloud_goes_down(running_system, wait_until):
     async with running_system() as system:
         reader = system.reader('rd-1')

@@ -69,7 +69,7 @@ post-quantum migration (persona cards, 811373A):
 |---|---|---|
 | `cio` (default) | the CIO, and the key customer | green / amber / red status and the top three risks in plain language, without addresses or device names |
 | `migration` | the PQC migration project manager | traffic-weighted PQC readiness, gateway coverage, and the gateways blocking it |
-| `security` | the security officer | the quantum-vulnerable connections with the readers behind them and their share of last-hour traffic, what switching to `KEY_EXCHANGE=hybrid-only` would disconnect, and offline gateways. Never green while a classical connection remains |
+| `security` | the security officer | the quantum-vulnerable connections with the readers behind them and their share of last-hour traffic, what switching to `KEY_EXCHANGE=hybrid-only` would disconnect, offline gateways, and the encryption status of every device (see below). Never green while a classical connection remains |
 
 Each view ends with "Your concerns": what the dashboard addresses for that
 stakeholder, what it doesn't yet, and what it won't (policy decisions where
@@ -92,6 +92,24 @@ score and status rules live:
   read).
 - Traffic scores use access events from the rolling last hour. The security
   officer view shows the non-PQC share alongside the per-gateway breakdown.
+
+The security officer view ends with the **encryption status of every
+device** (`GET /api/devices`, `devices.py`): each registered or connected
+gateway and reader, with the TLS version, cipher suite and key exchange of its
+own link and, for a reader, of its gateway's link to the cloud. Counts per
+status sit above the table, and a line below gives the panel's own link (the
+browser's connection to the panel). A device's status is its weakest link:
+
+- `post-quantum`: every link is a post-quantum hybrid;
+- `classical`: some link is classical. Every reader is, because the reader →
+  gateway hop is classical by the spec;
+- `unknown`: a key exchange the cloud couldn't read, an unregistered device
+  (its links are still shown), or a reader behind a gateway that is offline or
+  doesn't report its readers;
+- `offline`: a gateway that isn't connected, or a reader its reporting gateway
+  doesn't list.
+
+Nothing the cloud can't confirm is shown as encrypted.
 
 The views are a presentation choice, not access control: the panel has no
 authentication, so the CIO view is safe to *show* a customer but the panel
@@ -144,7 +162,8 @@ Readers, gateways and the groups themselves are edited through sqlite-web
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical) and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `key_exchange`, `post_quantum`), or `null` if the gateway hasn't reported them |
+| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical), `tls_version` and `cipher` of the connection, and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`), or `null` if the gateway hasn't reported them |
+| `GET /api/devices` | every gateway and reader: `statuses`, `counts` per type (`gateway`, `reader`) and status, `devices` (`id`, `type`, `gateway`, `registered`, `state`, `status`, and `links`: each `name`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`; a reader's own link first, then its gateway's) and `panel`, the request's own link |
 | `GET /api/summary` | the stakeholder views' data: `readiness` (traffic weighted, 0–1 or `null` with no recent events), `gateway_coverage` (0–1 or `null` with no connected gateways), `non_pqc_traffic_share`, `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `classical`, `unknown`, `offline`), the `classical`, `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` (events in the last hour) and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
 | `GET /api/readers` | readers with their `gateway_id` and `zone_name` |
 | `GET /api/events?key=&reader=` | newest 100 access events, optionally filtered |

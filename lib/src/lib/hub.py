@@ -29,8 +29,8 @@ class Hub:
         # connected() may be called from other threads (the cloud's panel).
         # The lock is never held across an await.
         self._lock = threading.Lock()
-        # client ID -> (connection, connected since, key-exchange group)
-        self._clients: dict[str, tuple[ServerConnection, str, str | None]] = {}
+        # client ID -> (connection, connected since, tls.link_details())
+        self._clients: dict[str, tuple[ServerConnection, str, dict]] = {}
         self._request_group: ContextVar[str | None] = ContextVar(
             'request_group', default=None
         )
@@ -46,19 +46,22 @@ class Hub:
                     'id': client_id,
                     'address': ws.remote_address[0],
                     'since': since,
-                    'key_exchange': group,
-                    'post_quantum': tls.is_post_quantum(group),
+                    **link,
+                    'post_quantum': tls.is_post_quantum(link['key_exchange']),
                 }
-                for client_id, (ws, since, group) in sorted(self._clients.items())
+                for client_id, (ws, since, link) in sorted(self._clients.items())
             ]
 
     async def handle(self, ws: ServerConnection) -> None:
         client_id = ws.request.headers.get(self.id_header, 'unknown')
         since = datetime.now(UTC).isoformat(timespec='seconds')
-        group = tls.negotiated_group(ws.transport.get_extra_info('ssl_object'))
+        # Read on the event loop, which owns the connection: connected() is also
+        # called from other threads.
+        link = tls.link_details(ws.transport.get_extra_info('ssl_object'))
+        group = link['key_exchange']
         token = self._request_group.set(group)
         with self._lock:
-            self._clients[client_id] = (ws, since, group)
+            self._clients[client_id] = (ws, since, link)
         self.changed()
         log.info(
             '%s connected from %s, key exchange %s',
