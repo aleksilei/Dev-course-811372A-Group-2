@@ -134,6 +134,31 @@ async def test_panel_shows_the_event_and_the_connected_gateway(running_system):
     assert gateway['post_quantum'] == tls.is_post_quantum(gateway['key_exchange'])
 
 
+async def test_panel_lists_the_readers_connected_to_each_gateway(
+    running_system, wait_until
+):
+    def readers_of_gw_1():
+        [gateway] = system.panel_api('gateways')
+        return [reader['id'] for reader in gateway['readers']]
+
+    async with running_system() as system:
+        await wait_until(lambda: readers_of_gw_1() == [])
+        rd1, rd3 = system.reader('rd-1'), system.reader('rd-3')
+        await rd1.authorize('key-alice')
+        await rd3.authorize('key-bob')
+        await wait_until(lambda: readers_of_gw_1() == ['rd-1', 'rd-3'])
+        [gateway] = await asyncio.to_thread(system.panel_api, 'gateways')
+
+        await rd1.close()
+        await wait_until(lambda: readers_of_gw_1() == ['rd-3'])
+        await rd3.close()
+
+    [listed, _] = gateway['readers']
+    assert listed['key_exchange'] == 'X25519'
+    assert listed['post_quantum'] is False
+    assert listed['address'] == '127.0.0.1'
+
+
 async def test_readers_fail_closed_when_the_cloud_goes_down(running_system, wait_until):
     async with running_system() as system:
         reader = system.reader('rd-1')

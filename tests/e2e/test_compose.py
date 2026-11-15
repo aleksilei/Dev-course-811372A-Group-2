@@ -95,6 +95,28 @@ def test_readers_are_listed_with_their_gateway_and_zone(stack):
     ]
 
 
+def test_each_gateway_reports_the_readers_connected_to_it(stack):
+    # Readers connect on their first scan, within SCAN_INTERVAL of starting.
+    expected = {}
+    for reader_id, (_, _, gateway) in READERS.items():
+        expected.setdefault(gateway, []).append(reader_id)
+
+    def reported():
+        gateways = stack.api('gateways')
+        listed = {
+            gateway['id']: [reader['id'] for reader in gateway['readers'] or []]
+            for gateway in gateways
+        }
+        return gateways if listed == expected else None
+
+    gateways = wait_for(reported, 'every reader listed under its gateway')
+    readers = [reader for gateway in gateways for reader in gateway['readers']]
+    # The reader -> gateway hop is classical, per the spec.
+    assert {(r['key_exchange'], r['post_quantum']) for r in readers} == {
+        ('X25519', False)
+    }
+
+
 @pytest.mark.parametrize(
     ('client', 'server', 'group'),
     [

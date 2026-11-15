@@ -25,9 +25,15 @@ Run with `python -m gateway`. It's a stateless relay: WSS server for readers
   forwarded request gets a unique `request_id`, and the cloud's reply is routed
   back to the waiting reader by that ID, so replies may arrive in any order.
   After a lost or failed connection it retries every 3 s.
+- **Connected readers:** the gateway tells the cloud which readers are
+  connected to it (ID, address, connected since, key exchange) whenever one
+  connects or disconnects, and again after every reconnect to the cloud. Only
+  the latest list is sent. A cloud from before this feature answers `fail`,
+  which is only logged. The control panel shows the lists.
 - **Fails closed:** while the cloud is unreachable, when it doesn't answer
   within 5 s, or when the answer is anything but an explicit `pass`, the reader
-  gets `fail`.
+  gets `fail`. Requests in flight when the cloud connection drops fail at
+  once.
 - No caching of cloud responses (a stretch goal in the spec).
 
 ```jsonc
@@ -35,4 +41,10 @@ Run with `python -m gateway`. It's a stateless relay: WSS server for readers
 {"id": "key-bob", "reader_id": "rd-3"}
 // gateway -> reader
 {"result": "pass"}
+// gateway -> cloud, on every change in its connected readers
+{"type": "readers", "request_id": "…", "readers": [
+  {"id": "rd-3", "address": "10.10.0.4", "since": "2026-11-15T12:00:00+00:00", "key_exchange": "X25519"}
+]}
+// cloud -> gateway
+{"request_id": "…", "result": "ok"}
 ```

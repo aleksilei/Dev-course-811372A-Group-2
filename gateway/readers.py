@@ -1,6 +1,9 @@
 from gateway.cloud_link import CloudLink
 from lib.hub import Hub
 
+# What the cloud is told about each connected reader.
+REPORTED = ('id', 'address', 'since', 'key_exchange')
+
 
 class ReaderHub(Hub):
     """Relays each connected reader's requests to the cloud; no local logic."""
@@ -10,6 +13,17 @@ class ReaderHub(Hub):
     def __init__(self, cloud: CloudLink) -> None:
         super().__init__()
         self.cloud = cloud
+        # Report the empty list too: the cloud then knows that no reader is
+        # connected, rather than not knowing.
+        self.changed()
+
+    def changed(self) -> None:
+        self.cloud.report_readers(
+            [
+                {field: reader[field] for field in REPORTED}
+                for reader in self.connected()
+            ]
+        )
 
     async def respond(self, request: dict, client_id: str) -> dict:
         reply = await self.cloud.request(request)

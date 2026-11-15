@@ -101,14 +101,29 @@ The Operations tab is laid out to stay usable with many readers and gateways (tr
 `make run-scaled`, see the [root README](../README.md#scaled-stack-opt-in)):
 
 - Tiles at the top count the connected gateways (of all known), those on
-  classical key exchange, the readers and the keys.
+  classical key exchange, the connected readers (of all registered), any
+  unregistered readers that are connected, and the keys.
 - A toolbar that stays at the top of the window filters the readers by
   gateway and by reader ID or zone text. The filter applies to "Readers",
   "Room access" and "Group rooms".
-- "Readers" lists them grouped by gateway, each group showing its reader count
-  and the gateway's connection state. Groups can be opened and closed; with
-  more than 20 readers they start closed, and a text search opens the groups
-  it matches in.
+- "Readers" lists them grouped by gateway, each group showing how many of its
+  readers are connected and the gateway's connection state. Groups can be
+  opened and closed; with more than 20 readers they start closed, and a text
+  search opens the groups it matches in.
+- Each reader's **Connection**, as its gateway reports it (hover for the
+  address and key exchange):
+  - `connected since …` (green);
+  - `connected via gw-X since …` (amber): connected through another gateway
+    than the database says;
+  - `not registered: its scans fail` (amber): connected, but not in the
+    database. Listed under the gateway it's connected to, and left out of
+    the matrices;
+  - `not connected` (red);
+  - `unknown` (grey): its gateway isn't connected, or is from before reader
+    lists and doesn't report them.
+
+  Reader IDs are taken on trust, like gateway IDs. Only live connections are
+  kept, in memory: nothing about past connections.
 - Wide or long tables scroll inside their own box, with the header rows and
   the key or group column kept in view. The room columns of the matrices are
   grouped under their gateway.
@@ -129,7 +144,7 @@ Readers, gateways and the groups themselves are edited through sqlite-web
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown) and `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical) |
+| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical) and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `key_exchange`, `post_quantum`), or `null` if the gateway hasn't reported them |
 | `GET /api/summary` | the stakeholder views' data: `readiness` (traffic weighted, 0–1 or `null` with no recent events), `gateway_coverage` (0–1 or `null` with no connected gateways), `non_pqc_traffic_share`, `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `classical`, `unknown`, `offline`), the `classical`, `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` (events in the last hour) and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
 | `GET /api/readers` | readers with their `gateway_id` and `zone_name` |
 | `GET /api/events?key=&reader=` | newest 100 access events, optionally filtered |
