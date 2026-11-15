@@ -17,8 +17,9 @@ jobs:
     # skip them.
     container: python:3.15-slim
     steps:
-      - name: Install make
-        run: apt-get update && apt-get install --yes --no-install-recommends make
+      # Node runs the control panel's JavaScript tests (make test).
+      - name: Install make and Node.js
+        run: apt-get update && apt-get install --yes --no-install-recommends make nodejs
 
       - uses: actions/checkout@v7
 
