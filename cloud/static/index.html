@@ -15,6 +15,7 @@
     <nav class="tabs" aria-label="Panel sections">
       <a href="#operations" data-tab="operations">Operations</a>
       <a href="#stakeholders" data-tab="stakeholders">Stakeholders</a>
+      <a href="#logs" data-tab="logs">Logs</a>
     </nav>
 
     <main id="tab-stakeholders" hidden>
@@ -78,22 +79,42 @@
       <div class="scroll tall"><table class="matrix" id="reader-groups"><thead></thead><tbody></tbody></table></div>
     </section>
 
-    <section>
-      <h2>Access history</h2>
-      <form id="filter">
-        <input id="key" placeholder="Filter by key, e.g. key-alice">
-        <input id="reader" placeholder="Filter by reader, e.g. rd-1">
-      </form>
-      <div class="scroll tall">
-        <table>
-          <thead>
-            <tr><th>Time (UTC)</th><th>Key</th><th>Reader</th><th>Zone</th><th>Gateway</th><th>Result</th></tr>
-          </thead>
-          <tbody id="events"></tbody>
-        </table>
-      </div>
-    </section>
+    </main>
 
+    <main id="tab-logs" hidden>
+      <section>
+        <h2>Gateway connection history</h2>
+        <form id="connection-filter">
+          <label>Gateway
+            <select id="connection-gateway"><option value="">All gateways</option></select>
+          </label>
+        </form>
+        <div class="scroll tall">
+          <table>
+            <thead>
+              <tr><th>Gateway</th><th>Address</th><th>Key exchange</th><th>PQC</th>
+                <th>Connected (UTC)</th><th>Disconnected (UTC)</th></tr>
+            </thead>
+            <tbody id="connections"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Access history</h2>
+        <form id="filter">
+          <input id="key" placeholder="Filter by key, e.g. key-alice">
+          <input id="reader" placeholder="Filter by reader, e.g. rd-1">
+        </form>
+        <div class="scroll tall">
+          <table>
+            <thead>
+              <tr><th>Time (UTC)</th><th>Key</th><th>Reader</th><th>Zone</th><th>Gateway</th><th>Result</th></tr>
+            </thead>
+            <tbody id="events"></tbody>
+          </table>
+        </div>
+      </section>
     </main>
 
     <script src="/app.js"></script>

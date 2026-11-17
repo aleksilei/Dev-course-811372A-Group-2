@@ -42,6 +42,11 @@ logged.
 
 - `schema.sql` creates the tables from the spec, plus `ACCESS_EVENTS`. It runs on
   every start (`CREATE TABLE IF NOT EXISTS`).
+- `GATEWAY_CONNECTIONS` stores every gateway-to-cloud session: gateway ID,
+  remote address, negotiated key-exchange group, whether it is post-quantum,
+  and its connected and disconnected UTC timestamps. An empty disconnect time
+  means the session is still open. The cloud closes any leftover open sessions
+  at startup so a previous process crash cannot make them appear live forever.
 - `seed.sql` holds the example gateway, readers, groups and keys. It is loaded
   **only when the database file is brand new**, so edits made in the panel or
   sqlite-web survive restarts. To start over, stop the stack and delete `data/cloud/master.db`.
@@ -60,8 +65,8 @@ unless you trust `data/certs/ca.pem`. The panel is vanilla HTML/CSS/JS
 data changed, so scroll positions, open or closed gateways, filters and text
 being typed stay as they are.
 
-The panel has two tabs, kept in the URL so a link opens the same place:
-**Operations** (`#operations`, the default) with everything below, and
+The panel has three tabs, kept in the URL so a link opens the same place:
+**Operations** (`#operations`, the default), **Logs** (`#logs`) and
 **Stakeholders** (`#stakeholders/<view>`) with a view per stakeholder of the
 post-quantum migration (persona cards, 811373A):
 
@@ -115,6 +120,12 @@ The views are a presentation choice, not access control: the panel has no
 authentication, so the CIO view is safe to *show* a customer but the panel
 must not be exposed to one.
 
+The **Logs** tab combines the gateway connection history and the existing
+access history. It shows the newest 100 gateway sessions, optionally filtered by
+gateway before applying the limit; classical key-exchange groups are highlighted
+in amber. An empty disconnect time means the session is current. Access history keeps its key and
+reader filters.
+
 The Operations tab is laid out to stay usable with many readers and gateways (try
 `make run-scaled`, see the [root README](../README.md#scaled-stack-opt-in)):
 
@@ -140,8 +151,8 @@ The Operations tab is laid out to stay usable with many readers and gateways (tr
   - `not connected` (red): its gateway reports it isn't;
   - `unknown` (grey): its gateway is offline, or doesn't report its readers.
 
-  Reader IDs are taken on trust, like gateway IDs. Only live connections are
-  kept, in memory: nothing about past connections.
+  Reader IDs are taken on trust, like gateway IDs. Reader connections are live
+  reports from gateways; only gateway-to-cloud sessions are kept as history.
 - Wide or long tables scroll inside their own box, with the header rows and
   the key or group column kept in view. The room columns of the matrices are
   grouped under their gateway.
@@ -164,6 +175,7 @@ Readers, gateways and the groups themselves are edited through sqlite-web
 |---|---|
 | `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical), `tls_version` and `cipher` of the connection, and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`), or `null` if the gateway hasn't reported them |
 | `GET /api/devices` | every gateway and reader: `statuses`, `counts` per type (`gateway`, `reader`) and status, `devices` (`id`, `type`, `gateway`, `registered`, `state`, `status`, `address` and `since` of its connection, for readers `registered_gateway` and `zone_name` from the database, and `links`: each `name`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`; a reader's own link first, then its gateway's) and `panel`, the request's own link |
+| `GET /api/connections?gateway=` | newest 100 gateway-to-cloud connections, optionally filtered by gateway before limiting; each row has `gateway_id`, `address`, `key_exchange`, `post_quantum`, `connected_at` and `disconnected_at` (null while connected) |
 | `GET /api/summary` | the stakeholder views' data: `readiness` (traffic weighted, 0–1 or `null` with no recent events), `gateway_coverage` (0–1 or `null` with no connected gateways), `non_pqc_traffic_share`, `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `classical`, `unknown`, `offline`), the `classical`, `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` (events in the last hour) and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
 | `GET /api/readers` | readers with their `gateway_id` and `zone_name` |
 | `GET /api/events?key=&reader=` | newest 100 access events, optionally filtered |

@@ -92,6 +92,8 @@ class PanelHandler(BaseHTTPRequestHandler):
             self._send_json(
                 self.server.db.events(query.get('key'), query.get('reader'))
             )
+        elif url.path == '/api/connections':
+            self._send_json(self.server.db.gateway_connections(query.get('gateway')))
         elif url.path == '/api/readers':
             self._send_json(self.server.db.readers())
         elif url.path == '/api/access':

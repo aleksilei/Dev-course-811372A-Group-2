@@ -51,6 +51,7 @@ test('route reads the tab and view from the URL, defaulting what it does not kno
   const cases = [
     ['', { tab: 'operations', view: 'cio' }],
     ['#operations', { tab: 'operations', view: 'cio' }],
+    ['#logs', { tab: 'logs', view: 'cio' }],
     ['#stakeholders', { tab: 'stakeholders', view: 'cio' }],
     ['#stakeholders/security', { tab: 'stakeholders', view: 'security' }],
     ['#stakeholders/migration', { tab: 'stakeholders', view: 'migration' }],

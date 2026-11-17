@@ -35,6 +35,15 @@ ORDER BY rowid DESC
 LIMIT :limit
 """
 
+GATEWAY_CONNECTIONS = """
+SELECT id, gateway_id, address, key_exchange, post_quantum,
+       connected_at, disconnected_at
+FROM GATEWAY_CONNECTIONS
+WHERE (:gateway_id IS NULL OR gateway_id = :gateway_id)
+ORDER BY connected_at DESC, id DESC
+LIMIT :limit
+"""
+
 EVENT_COUNTS_SINCE = """
 SELECT gateway_id, key_exchange, COUNT(*) AS count
 FROM ACCESS_EVENTS
@@ -108,6 +117,59 @@ class Database:
         params = {'key_uuid': key_uuid, 'reader_id': reader_id, 'limit': limit}
         with self._connect() as conn:
             return [dict(row) for row in conn.execute(EVENTS, params)]
+
+    def gateway_connected(
+        self,
+        gateway_id: str,
+        address: str,
+        key_exchange: str | None,
+        post_quantum: bool | None,
+        connected_at: str,
+    ) -> int:
+        """Record one gateway-to-cloud session and return its row ID."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """INSERT INTO GATEWAY_CONNECTIONS
+                   (gateway_id, address, key_exchange, post_quantum, connected_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (gateway_id, address, key_exchange, post_quantum, connected_at),
+            )
+            return cursor.lastrowid
+
+    def gateway_disconnected(self, connection_id: int, disconnected_at: str) -> None:
+        """Close a specific gateway session without affecting reconnects."""
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE GATEWAY_CONNECTIONS SET disconnected_at = ?
+                   WHERE id = ? AND disconnected_at IS NULL""",
+                (disconnected_at, connection_id),
+            )
+
+    def close_open_gateway_connections(
+        self, disconnected_at: str | None = None
+    ) -> None:
+        """Mark sessions left open by a previous cloud process as disconnected."""
+        disconnected_at = disconnected_at or datetime.now(UTC).isoformat(
+            timespec='seconds'
+        )
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE GATEWAY_CONNECTIONS SET disconnected_at = ?
+                   WHERE disconnected_at IS NULL""",
+                (disconnected_at,),
+            )
+
+    def gateway_connections(
+        self, gateway_id: str | None = None, limit: int = 100
+    ) -> list[dict]:
+        """Newest gateway sessions first, limited after optional gateway filtering."""
+        params = {'gateway_id': gateway_id, 'limit': limit}
+        with self._connect() as conn:
+            rows = [dict(row) for row in conn.execute(GATEWAY_CONNECTIONS, params)]
+        for row in rows:
+            if row['post_quantum'] is not None:
+                row['post_quantum'] = bool(row['post_quantum'])
+        return rows
 
     def event_counts_since(self, since: str, until: str) -> list[dict]:
         """Count events by gateway and recorded key exchange within UTC ISO bounds."""
