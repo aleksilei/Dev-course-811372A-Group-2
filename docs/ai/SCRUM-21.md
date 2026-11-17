@@ -119,3 +119,15 @@ shared hub lifecycle hooks, threaded database writes, nullable unknown PQC
 status, startup cleanup, gateway dropdown and reuse of the existing amber
 styling. It selected the tests and resolved the merge conflicts. These are
 AI-assisted implementation choices for human review through PR #17.
+
+## Review follow-up: bound history queries
+
+The developer supplied a review comment asking for `LIMIT :limit` on the
+connection-history query, like access events, to avoid returning an unbounded
+number of rows as the history grows. The assistant added a default limit of
+100 to `Database.gateway_connections()`, applied after gateway filtering and
+newest-first ordering. The panel endpoint uses that default; existing records
+remain stored. Database and endpoint regression tests cover the cap, ordering
+and filtering, and the cloud README describes the bounded response.
+Validation after the change: all 295 Python unit/integration tests passed,
+with Pylint 10/10 and Ruff checks and formatting passing.

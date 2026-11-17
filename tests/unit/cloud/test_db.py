@@ -87,6 +87,28 @@ def test_gateway_connections_store_session_details_and_can_be_filtered(db):
     assert [row['gateway_id'] for row in db.gateway_connections()] == ['gw-2', 'gw-1']
 
 
+def test_gateway_connections_limit_preserves_order_and_gateway_filter(db):
+    ids = [
+        db.gateway_connected(
+            f'gw-{i % 2}',
+            '10.0.0.1',
+            'X25519',
+            False,
+            '2026-11-15T12:00:00+00:00',
+        )
+        for i in range(105)
+    ]
+
+    assert [row['id'] for row in db.gateway_connections()] == ids[-100:][::-1]
+    assert [row['id'] for row in db.gateway_connections(limit=3)] == ids[-3:][::-1]
+    assert [row['id'] for row in db.gateway_connections('gw-0', limit=3)] == [
+        ids[104],
+        ids[102],
+        ids[100],
+    ]
+    assert db.gateway_connections(limit=0) == []
+
+
 def test_unknown_gateway_key_exchange_is_stored_as_unknown(db):
     db.gateway_connected('gw-x', '10.0.0.3', None, None, '2026-11-15T12:00:00+00:00')
 

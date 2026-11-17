@@ -150,6 +150,27 @@ def test_connections_api_returns_history_newest_first_and_filters_by_gateway(get
     ]
 
 
+def test_connections_api_limits_results_after_gateway_filtering(get, db):
+    older_id = db.gateway_connected(
+        'gw-old', '10.0.0.1', 'X25519', False, '2026-11-15T11:00:00+00:00'
+    )
+    newer_ids = [
+        db.gateway_connected(
+            'gw-busy',
+            '10.0.0.2',
+            'X25519MLKEM768',
+            True,
+            '2026-11-15T12:00:00+00:00',
+        )
+        for _ in range(101)
+    ]
+
+    connections = json.loads(get('/api/connections')[2])
+    assert [row['id'] for row in connections] == newer_ids[-100:][::-1]
+    [older] = json.loads(get('/api/connections?gateway=gw-old')[2])
+    assert older['id'] == older_id
+
+
 def test_access_api(get, db):
     status, content_type, body = get('/api/access')
 

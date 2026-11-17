@@ -41,6 +41,7 @@ SELECT id, gateway_id, address, key_exchange, post_quantum,
 FROM GATEWAY_CONNECTIONS
 WHERE (:gateway_id IS NULL OR gateway_id = :gateway_id)
 ORDER BY connected_at DESC, id DESC
+LIMIT :limit
 """
 
 EVENT_COUNTS_SINCE = """
@@ -158,9 +159,11 @@ class Database:
                 (disconnected_at,),
             )
 
-    def gateway_connections(self, gateway_id: str | None = None) -> list[dict]:
-        """List gateway sessions newest first, optionally for one gateway."""
-        params = {'gateway_id': gateway_id}
+    def gateway_connections(
+        self, gateway_id: str | None = None, limit: int = 100
+    ) -> list[dict]:
+        """Newest gateway sessions first, limited after optional gateway filtering."""
+        params = {'gateway_id': gateway_id, 'limit': limit}
         with self._connect() as conn:
             rows = [dict(row) for row in conn.execute(GATEWAY_CONNECTIONS, params)]
         for row in rows:
