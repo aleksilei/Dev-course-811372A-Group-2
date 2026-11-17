@@ -46,8 +46,9 @@ For SCRUM-33, the assistant added:
 - Startup cleanup before serving connections. Leftover sessions receive the
   startup time as their disconnect time; this is a recovery timestamp, not
   a measurement of the exact moment a previous process stopped.
-- `GET /api/connections?gateway=`. Omitting the gateway returns all stored
-  sessions. Unknown key exchange and PQC status remain null.
+- `GET /api/connections?gateway=`. Omitting the gateway includes sessions
+  from any gateway. The review follow-up below caps each response at the
+  newest 100 matching sessions. Unknown key exchange and PQC status remain null.
 
 For SCRUM-34, the assistant added:
 
@@ -69,7 +70,7 @@ The assistant explained the gateway dropdown and the corresponding API:
 `/api/connections?gateway=gw-1`.
 
 At the developer's request, the assistant committed and pushed the work as
-`dcff7be` and opened [PR #17](https://github.com/aleksilei/Dev-course-811372A-Group-2/pull/17).
+`dcff7be` and opened PR #17.
 It also drafted a Jira comment linking the PR and describing both subtasks;
 the draft was returned to the developer, not posted to Jira.
 
@@ -129,5 +130,13 @@ number of rows as the history grows. The assistant added a default limit of
 newest-first ordering. The panel endpoint uses that default; existing records
 remain stored. Database and endpoint regression tests cover the cap, ordering
 and filtering, and the cloud README describes the bounded response.
+
 Validation after the change: all 295 Python unit/integration tests passed,
 with Pylint 10/10 and Ruff checks and formatting passing.
+The JavaScript suite was not rerun for this backend and documentation change;
+the earlier 17-test result belongs to the main-merge validation above.
+
+The assistant committed and pushed the fix as `8dbbfa5` to the existing
+SCRUM-21 branch. The developer then requested an updated AI usage transcript
+without reviewer names, and the assistant clarified the history response
+limit and recorded the review request, implementation and validation here.
