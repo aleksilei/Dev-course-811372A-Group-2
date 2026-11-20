@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import socket
+import ssl
 
 import pytest
 from websockets.asyncio.server import serve
@@ -63,7 +64,7 @@ async def test_sends_gateway_id_and_request_id(wait_until):
 
 
 async def test_reports_its_openssl_version_on_connect(wait_until, monkeypatch):
-    monkeypatch.setenv('OPENSSL_VERSION_REPORTED', 'OpenSSL 3.5.8')
+    monkeypatch.setattr(ssl, 'OPENSSL_VERSION', 'OpenSSL 3.5.8')
     seen = []
 
     async def cloud(ws):

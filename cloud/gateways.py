@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import ssl
 from datetime import UTC, datetime
 
 from cloud.db import Database
@@ -26,7 +27,7 @@ class GatewayHub(Hub):
         # Gateways from before reader lists never report one.
         self._readers: dict[str, list[dict]] = {}
         # The cloud's own OpenSSL, which ends every gateway link (SCRUM-51).
-        self.openssl_version = openssl.local_version()
+        self.openssl_version = ssl.OPENSSL_VERSION
 
     async def client_connected(
         self, client_id: str, address: str, since: str, group: str | None

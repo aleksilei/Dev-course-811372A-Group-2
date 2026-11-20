@@ -317,7 +317,7 @@ def test_a_patched_cloud_leaves_patched_gateways_protected():
         ['gw-1', 'gw-2'],
         READERS,
         [],
-        cloud_openssl='OpenSSL 3.5.8 (simulated)',
+        cloud_openssl='OpenSSL 3.5.9 29 Sep 2026',
     )
 
     assert summary['status'] == 'green'

@@ -4,6 +4,9 @@ Usage: python -m lib.topology <out dir> <gateways> <readers per gateway> [classi
 
 Writes into <out dir>, for `make run-scaled`:
 - docker-compose.scaled.yml: an override adding the sites to docker-compose.yml
+- docker-compose.migrated.yml: for `make migrate`, an override moving every
+  site's gateway to the -openssl<version> image (with the root
+  docker-compose.migrated.yml for the default stack's gateways)
 - certs/: the dev CA and the server certificates, one per site gateway
 - seed.sql: cloud/seed.sql plus the sites' gateways, readers and groups
 
@@ -11,9 +14,9 @@ Site n is gateway gw-s<n> with readers rd-s<n>-1.. on a reader VLAN of its own,
 10.10.<n>.0/24, the gateway at 10.10.<n>.10. The last `classical` sites stand
 in for gateways without ML-KEM, like gateway-2 in the default stack. Sites
 take turns at the scan ranges in SITE_SCAN_INTERVALS, so some are much busier
-than others. The cloud and the odd-numbered hybrid sites (gateway and readers)
-report PATCHED_OPENSSL, so the panel shows patched sites next to vulnerable
-ones (SCRUM-51).
+than others. The cloud and the odd-numbered hybrid sites' gateways run the
+-openssl<version> images (SCRUM-55), so the panel shows patched sites next to
+vulnerable ones. Readers keep the base image's OpenSSL: their hop is classical.
 
 When the topology changes, the certificates are made again and the scaled
 cloud database is deleted, so the cloud seeds itself with the new sites.
@@ -25,11 +28,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from lib.certs import COMPOSE_SERVERS, generate
-from lib.openssl import ML_KEM, OVERRIDE_ENV, fixed_in
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE_SEED = ROOT / 'cloud' / 'seed.sql'
 COMPOSE_FILE = 'docker-compose.scaled.yml'
+MIGRATED_FILE = 'docker-compose.migrated.yml'
 GATEWAY_PORT = 8765
 MAX_GATEWAYS = 254  # 10.10.0.0/24 is the default stack's reader VLAN
 MAX_READERS = 200
@@ -52,9 +55,8 @@ ZONES = [
 # very quiet, busy, ... On average 2, 5, 10 and 20 s.
 SITE_SCAN_INTERVALS = [(1, 3), (2, 8), (5, 15), (10, 30)]
 
-# What the patched sites report instead of the images' (vulnerable) OpenSSL,
-# through lib.openssl.OVERRIDE_ENV.
-PATCHED_OPENSSL = f'OpenSSL {fixed_in(ML_KEM)} (simulated)'
+# The OpenSSL that the -openssl<version> image variants build (SCRUM-55).
+OPENSSL_ENV = ROOT / 'openssl.env'
 
 
 @dataclass(frozen=True)
@@ -78,8 +80,21 @@ class Topology:
         return site > self.gateways - self.classical
 
     def is_patched(self, site: int) -> bool:
-        """Whether the site simulates an OpenSSL with the ML-KEM fix."""
+        """Whether the site's gateway runs the image with OpenSSL's ML-KEM fix."""
         return site % 2 == 1 and not self.is_classical(site)
+
+
+def pinned_openssl(path: Path = OPENSSL_ENV) -> dict[str, str]:
+    """The OPENSSL_VERSION and OPENSSL_SHA256 that openssl.env pins."""
+    lines = path.read_text(encoding='utf-8').splitlines()
+    return dict(
+        line.split('=', 1) for line in lines if line and not line.startswith('#')
+    )
+
+
+def patched_tag(pinned: dict[str, str]) -> str:
+    """The tag of the image variants with the pinned OpenSSL, e.g. openssl3.5.9."""
+    return f'openssl{pinned["OPENSSL_VERSION"]}'
 
 
 def gateway_ip(site: int) -> str:
@@ -109,12 +124,14 @@ def servers(topology: Topology) -> dict[str, str]:
 def compose(topology: Topology) -> dict:
     """The override that adds the sites to docker-compose.yml."""
     data = '${DATA_DIR}'
+    pinned = pinned_openssl()
     ca = f'{data}/certs/ca.pem:/certs/ca.pem:ro'
     services: dict[str, dict] = {
         # The cloud seeds itself from the scaled seed.sql instead. A vulnerable
         # cloud would weaken every hybrid site, patched or not.
         'cloud': {
-            'environment': {OVERRIDE_ENV: PATCHED_OPENSSL},
+            'image': f'dev-course/cloud:{patched_tag(pinned)}',
+            'build': {'args': pinned},
             'volumes': [f'{data}/seed.sql:/app/cloud/seed.sql:ro'],
         },
     }
@@ -129,10 +146,9 @@ def compose(topology: Topology) -> dict:
         environment = {'CLOUD': 'cloud:8443', 'ID': f'gw-s{n}'}
         if topology.is_classical(n):
             environment['KEY_EXCHANGE'] = 'classical'
-        patched = {OVERRIDE_ENV: PATCHED_OPENSSL} if topology.is_patched(n) else {}
-        environment.update(patched)
+        patched = f':{patched_tag(pinned)}' if topology.is_patched(n) else ''
         services[f'gateway-s{n}'] = {
-            'image': 'dev-course/gateway',
+            'image': f'dev-course/gateway{patched}',
             'pull_policy': 'never',
             'environment': environment,
             'volumes': [
@@ -155,7 +171,6 @@ def compose(topology: Topology) -> dict:
                     'KEYS': 'key-alice,key-bob,key-carol,key-mallory',
                     'SCAN_INTERVAL_MIN': str(low),
                     'SCAN_INTERVAL_MAX': str(high),
-                    **patched,
                 },
                 'volumes': [ca],
                 'networks': [network],
@@ -163,6 +178,12 @@ def compose(topology: Topology) -> dict:
                 'restart': 'unless-stopped',
             }
     return {'services': services, 'networks': networks}
+
+
+def migrated(topology: Topology) -> dict:
+    """The override that moves every site's gateway to the patched image."""
+    image = f'dev-course/gateway:{patched_tag(pinned_openssl())}'
+    return {'services': {f'gateway-s{n}': {'image': image} for n in topology.sites()}}
 
 
 def seed(topology: Topology, base: str) -> str:
@@ -199,12 +220,16 @@ def write(out_dir: str | Path, topology: Topology, base_seed: Path = BASE_SEED) 
         (out / 'cloud' / 'master.db').unlink(missing_ok=True)
     (out / 'cloud').mkdir(exist_ok=True)
     # JSON is valid YAML, and needs no YAML library.
-    (out / COMPOSE_FILE).write_text(
-        '# Written by lib.topology for `make run-scaled`: do not edit.\n'
-        + json.dumps(compose(topology), indent=2)
-        + '\n',
-        encoding='utf-8',
-    )
+    for name, override, target in [
+        (COMPOSE_FILE, compose(topology), 'make run-scaled'),
+        (MIGRATED_FILE, migrated(topology), 'make migrate'),
+    ]:
+        (out / name).write_text(
+            f'# Written by lib.topology for `{target}`: do not edit.\n'
+            + json.dumps(override, indent=2)
+            + '\n',
+            encoding='utf-8',
+        )
     (out / 'seed.sql').write_text(
         seed(topology, base_seed.read_text(encoding='utf-8')), encoding='utf-8'
     )

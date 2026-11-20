@@ -1,5 +1,6 @@
 import asyncio
 import json
+import ssl
 from types import SimpleNamespace
 
 import pytest
@@ -265,7 +266,7 @@ async def test_lists_whether_each_hybrid_gateway_is_weakened(
     db, wait_until, monkeypatch, case
 ):
     cloud, gateway, weakened = case
-    monkeypatch.setenv('OPENSSL_VERSION_REPORTED', cloud)
+    monkeypatch.setattr(ssl, 'OPENSSL_VERSION', cloud)
     hub = GatewayHub(db)
     ws = GatewayConnection('gw-1', [readers_report([])], 'X25519MLKEM768', gateway)
     task = asyncio.create_task(hub.handle(ws))

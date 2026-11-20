@@ -52,7 +52,7 @@ async def test_sends_its_reader_id_on_connect():
 
 
 async def test_reports_its_openssl_version_on_connect(monkeypatch):
-    monkeypatch.setenv('OPENSSL_VERSION_REPORTED', 'OpenSSL 3.5.7')
+    monkeypatch.setattr(ssl, 'OPENSSL_VERSION', 'OpenSSL 3.5.7')
     seen = []
 
     async def gateway(ws):
@@ -65,9 +65,7 @@ async def test_reports_its_openssl_version_on_connect(monkeypatch):
     assert seen == ['OpenSSL 3.5.7']
 
 
-async def test_reports_the_linked_openssl_version_by_default(monkeypatch):
-    monkeypatch.delenv('OPENSSL_VERSION_REPORTED', raising=False)
-
+async def test_reports_the_linked_openssl_version():
     client = GatewayClient('ws://127.0.0.1:1', 'rd-1', None)
 
     assert client.openssl_version == ssl.OPENSSL_VERSION
