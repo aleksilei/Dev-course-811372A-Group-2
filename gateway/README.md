@@ -13,7 +13,6 @@ Run with `python -m gateway`. It's a stateless relay: WSS server for readers
 | `TLS_CERT` / `TLS_KEY` | `/certs/server.pem` / `/certs/server.key` | certificate readers verify |
 | `TLS_CA` | `/certs/ca.pem` | CA used to verify the cloud |
 | `KEY_EXCHANGE` | `hybrid` | key exchange with the cloud: `hybrid` (`X25519MLKEM768` with `X25519` fallback), `hybrid-only` or `classical`; anything else, or a leftover `OPENSSL_CONF`, stops the gateway at startup. See [lib](../lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
-| `OPENSSL_VERSION_REPORTED` | unset | simulation only: the OpenSSL version to report instead of the linked one, e.g. `OpenSSL 3.5.8`; not an OpenSSL version stops the gateway at startup. See [lib](../lib/README.md#openssl-versions-libopenssl) |
 
 ## Behaviour
 

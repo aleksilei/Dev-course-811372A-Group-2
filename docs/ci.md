@@ -28,6 +28,14 @@ digests) copied to `ghcr.io/aleksilei/dev-course-811372a-group-2/` as `cloud`,
 `gateway` and `reader`, tagged `1.0.0`, plus `1.0` and `latest` when it is the
 newest release (a pre-release gets only its own tag).
 
+The cloud and gateway also get their
+[OpenSSL variants](../README.md#openssl-image-variants), built with the
+OpenSSL that `openssl/openssl.env` pins: `1.0.0-openssl3.5.9`, `1.0-openssl3.5.9`
+and, for `latest`, `openssl3.5.9`. The e2e tests migrate to them
+(`openssl/compose.migrated.yml`). Their OpenSSL stage is the same in both
+Dockerfiles, so it is compiled once per platform; for arm64 that runs under
+QEMU, which is the slowest part of a release.
+
 ## Pulling the images
 
 The packages are private, like the repository. To pull one, log in with a

@@ -17,7 +17,6 @@ calls the `unlock()` stub, which only logs.
 | `SCAN_INTERVAL_MAX` | `8` | longest wait between scans, in seconds |
 | `SCAN_INTERVAL` | unset | a fixed wait instead of the random one (the e2e tests use `1`) |
 | `TLS_CA` | `/certs/ca.pem` | CA used to verify the gateway |
-| `OPENSSL_VERSION_REPORTED` | unset | simulation only: the OpenSSL version to report instead of the linked one, e.g. `OpenSSL 3.5.8`; not an OpenSSL version stops the reader at startup. See [lib](../lib/README.md#openssl-versions-libopenssl) |
 
 ## Scan interval
 

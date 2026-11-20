@@ -44,13 +44,43 @@ make run
   uncomment the `KEY_EXCHANGE: hybrid-only` line in `docker-compose.yml` to see it
   refused (and `reader-5` failing closed).
 - Every device and the cloud report their OpenSSL version. The images run
-  3.5.7, which is affected by the simulated ML-KEM vulnerability (SCRUM-45),
-  so the panel flags all of them, and a hybrid gateway counts as classical in
-  the stakeholder views. See [lib](lib/README.md#openssl-versions-libopenssl).
+  Debian's 3.5.7, which is affected by the simulated ML-KEM vulnerability
+  (SCRUM-45), so the panel flags all of them, and a hybrid gateway counts as
+  classical in the stakeholder views. See [lib](lib/README.md#openssl-versions-libopenssl).
+- Migrate: `make migrate` moves the cloud and both gateways to the
+  `-openssl<version>` images, which have the fix, and the panel shows `gw-1`
+  as hybrid again (the readers stay flagged). `make run` moves them back. See
+  [OpenSSL image variants](#openssl-image-variants).
 - Stop: `make stop`
 
 All state lives in `data/` (gitignored): `data/certs/` and the SQLite database
 `data/cloud/master.db`, which is seeded with the example data on first start.
+
+### OpenSSL image variants
+
+Until `python:3.15-slim` (Debian trixie) ships OpenSSL 3.5.8 or newer, the
+cloud and gateway images come in two variants from one Dockerfile (SCRUM-55):
+
+| Image | OpenSSL |
+|---|---|
+| `dev-course/cloud`, `dev-course/gateway` | the base image's (3.5.7, affected) |
+| `dev-course/cloud:openssl3.5.9`, `dev-course/gateway:openssl3.5.9` | the version `openssl/openssl.env` pins, built from source and loaded ahead of Debian's `libssl` |
+
+- `make build` builds both. `make migrate` moves the cloud and every gateway
+  to the variants (`openssl/compose.migrated.yml`), on the scaled stack if it
+  is running, else on the default stack. `make run` or `make run-scaled`
+  moves them back.
+- The scaled stack starts half migrated: its cloud and odd-numbered hybrid
+  sites run the variants.
+- Readers stay on the base image: their hop to the gateway is classical, so
+  ML-KEM doesn't matter to them.
+- **We update this OpenSSL ourselves**: Debian's security updates don't reach
+  it. For a new OpenSSL release, bump `OPENSSL_VERSION` and `OPENSSL_SHA256`
+  in `openssl/openssl.env` together (the checksum is the `.sha256` file OpenSSL
+  publishes with the release).
+- When the base image ships the fix itself, CI (`test.yml`) warns. Then the
+  variants and the `openssl/` folder, which holds everything they need, can
+  go.
 
 ### Scaled stack (opt-in)
 
@@ -63,7 +93,8 @@ make run-scaled GATEWAYS=4 READERS=3 CLASSICAL=1
 ```
 
 It uses the default stack's ports, so `make stop` first, and `make stop-scaled`
-when done. Device names, where its data lives and each site's traffic: see
+when done. `make migrate` moves its cloud and every gateway to the patched
+OpenSSL. Device names, where its data lives and each site's traffic: see
 [lib/README.md](lib/README.md#scaled-stack-libtopology).
 
 ## Repository layout
@@ -138,8 +169,9 @@ pure functions; no npm packages are needed.
 
 Run the end-to-end tests. They build the images, start the compose stack from
 them and check it from outside, as the doors and an admin see it: decisions,
-the key exchange of every hop, panel edits, the cloud going down, the cloud
-switched to hybrid-only. The stack gets its own certificates and database, so
+the key exchange of every hop, OpenSSL versions and the migration to the
+patched images, panel edits, the cloud going down, the cloud switched to
+hybrid-only. The stack gets its own certificates and database, so
 `data/` is left alone, but it uses the same ports as `make run`: stop the dev
 stack first.
 ```bash
@@ -163,8 +195,8 @@ GitHub Actions, in `.github/workflows/`:
 | Workflow | Runs on | |
 |---|---|---|
 | `pr.yml` | every pull request | `make lint` and `make test`, `make e2e`, and `can-merge`, which passes when both do |
-| `release.yml` | a `v*` tag | the same checks, then builds the images for amd64 and arm64, runs the e2e tests on the amd64 ones and pushes them to the GitHub container registry |
-| `test.yml` | called by both | lint and tests, in `python:3.15-slim`: its OpenSSL has ML-KEM, and the runner's doesn't (pytest would skip those tests). Installs Debian's Node.js for the JavaScript tests |
+| `release.yml` | a `v*` tag | the same checks, then builds the images (and the [OpenSSL variants](#openssl-image-variants)) for amd64 and arm64, runs the e2e tests on the amd64 ones and pushes them to the GitHub container registry |
+| `test.yml` | called by both | lint and tests, in `python:3.15-slim`: its OpenSSL has ML-KEM, and the runner's doesn't (pytest would skip those tests). Warns when that OpenSSL has the ML-KEM fix, so the [variants](#openssl-image-variants) can go. Installs Debian's Node.js for the JavaScript tests |
 
 A pull request may be merged once its `can-merge` check is green. GitHub
 doesn't enforce that here (no branch protection for a private repository on

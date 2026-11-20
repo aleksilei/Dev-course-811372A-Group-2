@@ -31,6 +31,16 @@ jobs:
 
       - run: make install
 
+      # The -openssl<version> cloud and gateway images (SCRUM-55) are only
+      # needed until the base image ships the ML-KEM fix itself.
+      - name: Check whether the base image still needs the OpenSSL variants
+        run: >-
+          venv/bin/python -c 'import ssl; from lib import openssl;
+          print(ssl.OPENSSL_VERSION);
+          openssl.is_vulnerable(ssl.OPENSSL_VERSION) or print(
+          f"::warning::python:3.15-slim now ships {ssl.OPENSSL_VERSION}, which has the
+          ML-KEM fix: the -openssl images and openssl/ can go (SCRUM-55)")'
+
       - run: make lint
 
       - run: make test

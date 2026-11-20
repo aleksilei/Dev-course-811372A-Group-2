@@ -10,6 +10,12 @@ RUFF := $(VENV_BIN)/ruff
 
 DOCKER := docker
 COMPOSE := $(DOCKER) compose -f docker-compose.yml
+# The default stack with the cloud and the gateways on the -openssl<version>
+# images (make migrate). openssl/openssl.env pins that OpenSSL; exported,
+# docker compose fills it into openssl/compose.migrated.yml.
+COMPOSE_MIGRATED := $(COMPOSE) -f openssl/compose.migrated.yml
+include openssl/openssl.env
+export OPENSSL_VERSION OPENSSL_SHA256
 
 CERTS_DIR := data/certs
 
@@ -17,7 +23,7 @@ CERTS_DIR := data/certs
 
 .PHONY: help
 .PHONY: install lint fix test e2e check clean certs
-.PHONY: build build-cloud build-gateway build-reader run restart stop ps logs
+.PHONY: build build-cloud build-gateway build-reader run migrate restart stop ps logs
 .PHONY: run-scaled stop-scaled ps-scaled logs-scaled
 .PHONY: check-docker
 
@@ -71,21 +77,38 @@ $(CERTS_DIR)/gateway-2.pem:
 
 #========== Docker ==========#
 
+# Every image, and the -openssl<version> cloud and gateway images.
 build:
 	$(COMPOSE) build
+	$(COMPOSE_MIGRATED) build cloud gateway-1
 
 build-cloud:
 	$(COMPOSE) build cloud
+	$(COMPOSE_MIGRATED) build cloud
 
 build-gateway:
 	$(COMPOSE) build gateway-1
+	$(COMPOSE_MIGRATED) build gateway-1
 
 build-reader:
 	$(COMPOSE) build reader-1
 
+# Everything on the base image's OpenSSL, which has the ML-KEM vulnerability.
 run: check-docker certs
 	$(COMPOSE) up --build --detach
 	@$(MAKE) ps
+
+# Moves the cloud and every gateway to the -openssl<version> images (SCRUM-55):
+# the scaled stack's if it is running, else the default stack's. make run (or
+# make run-scaled) moves them back.
+migrate: check-docker certs
+	@if [ -f $(SCALED_DIR)/$(SCALED_FILE) ] && [ -n "$$($(SCALED) ps -q)" ]; then \
+		compose='$(SCALED_MIGRATED)'; \
+	else \
+		compose='$(COMPOSE_MIGRATED)'; \
+	fi; \
+	set -x; \
+	$$compose up --build --detach cloud $$($$compose config --services | grep '^gateway-')
 
 restart: stop run
 
@@ -107,8 +130,11 @@ GATEWAYS ?= 10
 READERS ?= 8
 CLASSICAL ?= 2
 SCALED_DIR := data-scaled
-SCALED := DATA_DIR=./$(SCALED_DIR) $(DOCKER) compose -p dev-course-scaled \
-	-f docker-compose.yml -f $(SCALED_DIR)/docker-compose.scaled.yml
+SCALED_FILE := docker-compose.scaled.yml
+SCALED := env DATA_DIR=./$(SCALED_DIR) $(DOCKER) compose -p dev-course-scaled \
+	-f docker-compose.yml -f $(SCALED_DIR)/$(SCALED_FILE)
+SCALED_MIGRATED := $(SCALED) -f openssl/compose.migrated.yml \
+	-f $(SCALED_DIR)/docker-compose.migrated.yml
 
 run-scaled: check-docker venv
 	@if [ -n "$$($(COMPOSE) ps -q)" ]; then \
@@ -116,12 +142,12 @@ run-scaled: check-docker venv
 		exit 1; \
 	fi
 	$(VENV_PYTHON) -m lib.topology $(SCALED_DIR) $(GATEWAYS) $(READERS) $(CLASSICAL)
-	$(COMPOSE) build
+	@$(MAKE) build
 	$(SCALED) up --detach --remove-orphans
 	@echo "Control panel: https://localhost:8444 (CA: $(SCALED_DIR)/certs/ca.pem)"
 
 stop-scaled: check-docker
-	@if [ -f $(SCALED_DIR)/docker-compose.scaled.yml ]; then $(SCALED) down; fi
+	@if [ -f $(SCALED_DIR)/$(SCALED_FILE) ]; then $(SCALED) down; fi
 
 ps-scaled: check-docker
 	$(SCALED) ps
@@ -151,11 +177,12 @@ help:
 	@echo "  check          Run linting and tests"
 	@echo "  clean          Remove generated Python files"
 	@echo "  certs          Generate the dev CA and server certificates"
-	@echo "  build          Build all Docker images"
-	@echo "  build-cloud    Build the cloud image"
-	@echo "  build-gateway  Build the gateway image"
+	@echo "  build          Build all Docker images, with the -openssl$(OPENSSL_VERSION) cloud and gateway"
+	@echo "  build-cloud    Build the cloud images (plain and -openssl$(OPENSSL_VERSION))"
+	@echo "  build-gateway  Build the gateway images (plain and -openssl$(OPENSSL_VERSION))"
 	@echo "  build-reader   Build the reader image"
-	@echo "  run            Start the system with docker compose"
+	@echo "  run            Start the system with docker compose, on the base image's OpenSSL"
+	@echo "  migrate        Move the cloud and every gateway to OpenSSL $(OPENSSL_VERSION) (scaled stack if running)"
 	@echo "  restart        Restart the system"
 	@echo "  stop           Stop and remove the containers"
 	@echo "  ps             Show container status"

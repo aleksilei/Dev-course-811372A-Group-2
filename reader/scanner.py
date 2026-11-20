@@ -18,7 +18,7 @@ class GatewayClient:
     """This reader's WebSocket connection to its gateway.
 
     The connection is opened on the first request and reopened on the next
-    request after any failure. It reports openssl.local_version() to the
+    request after any failure. It reports ssl.OPENSSL_VERSION to the
     gateway in the handshake.
     """
 
@@ -33,7 +33,7 @@ class GatewayClient:
         self.reader_id = reader_id
         self.context = context
         self.timeout = timeout
-        self.openssl_version = openssl.local_version()
+        self.openssl_version = ssl.OPENSSL_VERSION
         self._ws: ClientConnection | None = None
 
     async def authorize(self, key_uuid: str) -> bool:

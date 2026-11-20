@@ -1,9 +1,11 @@
 """The OpenSSL version each device runs, and whether it is vulnerable (SCRUM-51).
 
-Readers and gateways send their version in the OPENSSL_HEADER handshake
-header. Gateways relay their readers' versions in the reader report. The
-cloud checks each version, and its own, against ADVISORIES. Like device IDs,
-a reported version is taken on trust, because devices are not authenticated.
+Readers and gateways send the version their Python links (ssl.OPENSSL_VERSION)
+in the OPENSSL_HEADER handshake header. Gateways relay their readers' versions
+in the reader report. The cloud checks each version, and its own, against
+ADVISORIES. Like device IDs, a reported version is taken on trust, because
+devices are not authenticated. The -openssl<version> images (SCRUM-55) link a
+newer OpenSSL than the base image's.
 
 Fails closed: a connected device that reports no version, or one the cloud
 can't check (not OpenSSL, malformed), is assumed vulnerable to every advisory.
@@ -11,21 +13,10 @@ An old device that was never restarted onto a patch most likely runs an old
 version.
 """
 
-import logging
 import re
-import ssl
 from dataclasses import dataclass
 
-from lib.config import ConfigError, env
-
-log = logging.getLogger(__name__)
-
 OPENSSL_HEADER = 'OpenSSL-Version'
-
-# Simulation knob: report this version instead of the one actually linked,
-# e.g. "OpenSSL 3.5.8". All the images share one base image, so without it
-# every device (and the cloud) would report the same version.
-OVERRIDE_ENV = 'OPENSSL_VERSION_REPORTED'
 
 # Longer reports are dropped. The real ones are ~25 characters long.
 MAX_LENGTH = 64
@@ -87,24 +78,6 @@ def format_version(version: Version) -> str:
 def fixed_in(affects: str) -> str:
     """The first version fixing every advisory that breaks `affects`, e.g. '3.5.8'."""
     return format_version(max(a.fixed for a in ADVISORIES if a.affects == affects))
-
-
-def local_version() -> str:
-    """The version this process reports: OVERRIDE_ENV if set, else the linked one."""
-    override = env(OVERRIDE_ENV, '')
-    if not override:
-        return ssl.OPENSSL_VERSION
-    if parse(override) is None or len(override) > MAX_LENGTH:
-        raise ConfigError(
-            f'{OVERRIDE_ENV} must be an OpenSSL version such as "OpenSSL 3.5.8", '
-            f'not {override!r}'
-        )
-    log.info(
-        'reporting OpenSSL version %r (simulated) instead of %r',
-        override,
-        ssl.OPENSSL_VERSION,
-    )
-    return override
 
 
 def reported(value: object) -> str | None:

@@ -26,6 +26,8 @@ READERS = {
     'rd-5': ('reader-5', 'loading-dock', 'gw-2'),
 }
 HYBRID_ONLY = ('docker-compose.yml', 'tests/e2e/compose.hybrid-only.yml')
+# make migrate: the cloud and gateway-1 on the -openssl<version> images.
+MIGRATED = ('docker-compose.yml', 'openssl/compose.migrated.yml')
 
 
 def seed_outcome(key: str, reader_id: str) -> str:
@@ -152,7 +154,7 @@ def test_every_device_reports_tls_1_3_and_its_key_exchange(stack):
 
 
 def test_every_device_reports_the_images_openssl_and_its_vulnerability(stack):
-    # The default stack simulates no other version: all images share one base.
+    # The default stack starts on the base image's OpenSSL everywhere.
     result = stack.api('devices')
     reports = [*result['devices'], result['cloud']]
     versions = {report['openssl'] for report in reports}
@@ -166,6 +168,51 @@ def test_every_device_reports_the_images_openssl_and_its_vulnerability(stack):
     # gw-1 negotiates hybrid: with a vulnerable ML-KEM it counts as weakened.
     summary = stack.api('summary')
     assert [g['id'] for g in summary['weakened']] == (['gw-1'] if vulnerable else [])
+
+
+def test_migrating_the_cloud_and_the_gateways_ends_the_weakening(stack):
+    base = stack.api('devices')['cloud']['openssl']
+    patched = f'OpenSSL {stack.openssl["OPENSSL_VERSION"]} '
+    gateways = ['gateway-1', 'gateway-2']
+    stack.up('cloud', *gateways, files=MIGRATED)
+    try:
+
+        def migrated():
+            result = stack.api('devices')
+            rows = {(row['type'], row['id']): row for row in result['devices']}
+            gateway_rows = [rows['gateway', 'gw-1'], rows['gateway', 'gw-2']]
+            done = all(
+                row['state'] == 'connected'
+                and (row['openssl'] or '').startswith(patched)
+                for row in gateway_rows
+            )
+            return (result, gateway_rows, rows) if done else None
+
+        result, gateway_rows, rows = wait_for(
+            migrated, 'both gateways back on the patched OpenSSL'
+        )
+        assert result['cloud']['openssl'].startswith(patched)
+        assert result['cloud']['openssl_vulnerable'] is False
+        assert {row['openssl_vulnerable'] for row in gateway_rows} == {False}
+        # The readers' hop is classical: they keep the base image's OpenSSL.
+        assert {
+            row['openssl'] for (kind, _), row in rows.items() if kind == 'reader'
+        } <= {
+            base,
+            None,  # not reconnected yet
+        }
+
+        # gw-1 is hybrid again; gw-2, still classical, keeps the status amber.
+        summary = stack.api('summary')
+        assert summary['weakened'] == []
+        assert (summary['gateways']['hybrid'], summary['gateways']['weakened']) == (
+            1,
+            0,
+        )
+        assert summary['status'] == 'amber'
+    finally:
+        stack.up('cloud', *gateways)
+        stack.wait_until_connected()
 
 
 @pytest.mark.parametrize(

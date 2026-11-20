@@ -20,7 +20,6 @@ client sends (`0x16` starts a TLS handshake); a `308` keeps a POST a POST.
 | `GATEWAY_PORT` | `8443` | |
 | `PANEL_PORT` | `8444` | |
 | `KEY_EXCHANGE` | `hybrid` | key exchange with gateways (port 8443 only): `hybrid` (`X25519MLKEM768` with `X25519` fallback), `hybrid-only` (refuses classical gateways) or `classical`; anything else, or a leftover `OPENSSL_CONF`, stops the cloud at startup. See [lib](../lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
-| `OPENSSL_VERSION_REPORTED` | unset | simulation only: the cloud's own OpenSSL version to check instead of the linked one; not an OpenSSL version stops the cloud at startup. See [lib](../lib/README.md#openssl-versions-libopenssl) |
 
 ## Gateway protocol
 

@@ -132,18 +132,15 @@ the vulnerable ones (SCRUM-51).
   classical. Advisory texts and the "upgrade to" version are built from the
   table (`fixed_in()`), so adding an advisory is one row and a release.
 - The one advisory today is the course's simulated ML-KEM vulnerability
-  (SCRUM-45). The images run an affected version, so every device and the
-  cloud are affected unless they simulate a fix.
+  (SCRUM-45). The base image runs an affected version; the cloud and gateway
+  `-openssl<version>` images (`make migrate`, see the
+  [root README](../README.md#openssl-image-variants)) have the fix.
 - Fails closed: a connected device that reports no version, or one the cloud
   can't check (over 64 characters, or not OpenSSL, e.g. LibreSSL), is assumed
   vulnerable to every advisory. An old device that was never restarted onto
   a patch most likely runs an old version. A device that isn't connected
   claims nothing (`UNKNOWN`). Versions are taken on trust, like device IDs,
   because devices aren't authenticated.
-- `OPENSSL_VERSION_REPORTED` is a simulation knob for devices and the cloud:
-  all the images share one base image, so this is how one reports another
-  version, e.g. a patched `OpenSSL 3.5.8`. The scaled stack uses it; the
-  default stack doesn't.
 
 ## Scaled stack (`lib.topology`)
 
@@ -164,11 +161,15 @@ many of the last sites' gateways have no ML-KEM (default 2), like `gateway-2`.
 - It uses the default stack's ports, so `make stop` first. Then
   `make ps-scaled`, `make logs-scaled SERVICE=reader-s3-2`, and
   `make stop-scaled`. The control panel's CA is `data-scaled/certs/ca.pem`.
-- The cloud and the odd-numbered hybrid sites (gateway and readers) report
-  the first fixed version, `OpenSSL 3.5.8 (simulated)`, so the panel shows
-  patched sites next to vulnerable ones (see
+- The cloud and the odd-numbered hybrid sites' gateways run the
+  `-openssl<version>` images (the version `openssl/openssl.env` pins), so the panel
+  shows patched sites next to vulnerable ones (see
   [above](#openssl-versions-libopenssl)). A vulnerable cloud would weaken
-  every hybrid site.
+  every hybrid site. Readers keep the base image's OpenSSL.
+- `make migrate` on a running scaled stack moves every gateway, classical
+  ones included, to the patched image, through a second generated override,
+  `data-scaled/docker-compose.migrated.yml`. `make run-scaled` moves them
+  back.
 - Sites take turns being busy, normal, quiet and very quiet: their readers
   wait 1-3, 2-8, 5-15 or 10-30 s between scans, so traffic per site differs
   by up to 10x (see [reader/README.md](../reader/README.md#scan-interval)).

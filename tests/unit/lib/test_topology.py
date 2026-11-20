@@ -6,8 +6,16 @@ import subprocess
 import pytest
 
 from cloud import db as cloud_db
-from lib import openssl, topology
-from lib.topology import COMPOSE_FILE, ROOT, Topology, compose, servers, write
+from lib import topology
+from lib.topology import (
+    COMPOSE_FILE,
+    MIGRATED_FILE,
+    ROOT,
+    Topology,
+    compose,
+    servers,
+    write,
+)
 from reader import interval
 
 SMALL = Topology(gateways=3, readers=10, classical=1)
@@ -34,21 +42,30 @@ def test_the_last_sites_are_classical():
     assert services['gateway-s3']['environment']['KEY_EXCHANGE'] == 'classical'
 
 
-def test_odd_hybrid_sites_report_a_patched_openssl():
+def test_the_cloud_and_odd_hybrid_sites_gateways_run_the_patched_image():
     services = compose(SMALL)['services']
+    pinned = topology.pinned_openssl()
+    patched = f':openssl{pinned["OPENSSL_VERSION"]}'
 
-    def reported(name):
-        return services[name]['environment'].get('OPENSSL_VERSION_REPORTED')
-
-    # Site 1: patched. Site 2: the images' own OpenSSL. Site 3: classical.
-    assert (
-        reported('gateway-s1') == reported('reader-s1-10') == topology.PATCHED_OPENSSL
-    )
-    assert reported('gateway-s2') is reported('reader-s2-1') is None
-    assert reported('gateway-s3') is None
+    # Site 1: patched. Site 2: the base image's OpenSSL. Site 3: classical.
+    assert services['gateway-s1']['image'] == f'dev-course/gateway{patched}'
+    assert services['gateway-s2']['image'] == 'dev-course/gateway'
+    assert services['gateway-s3']['image'] == 'dev-course/gateway'
+    # Readers' hop is classical: they keep the base image's OpenSSL.
+    assert services['reader-s1-1']['image'] == 'dev-course/reader'
     # The cloud too: a vulnerable one would weaken every hybrid site.
-    assert reported('cloud') == topology.PATCHED_OPENSSL
-    assert openssl.is_vulnerable(topology.PATCHED_OPENSSL) is False
+    assert services['cloud']['image'] == f'dev-course/cloud{patched}'
+    assert services['cloud']['build']['args'] == pinned
+
+
+def test_migrating_moves_every_sites_gateway_to_the_patched_image():
+    services = topology.migrated(SMALL)['services']
+    patched = (
+        f'dev-course/gateway:openssl{topology.pinned_openssl()["OPENSSL_VERSION"]}'
+    )
+
+    # Classical site 3 too: it runs the same vulnerable OpenSSL.
+    assert services == {f'gateway-s{n}': {'image': patched} for n in (1, 2, 3)}
 
 
 def test_zones_repeat_with_a_number_after_a_lap():
@@ -186,3 +203,39 @@ def test_docker_compose_accepts_the_override(tmp_path, monkeypatch):
     services = result.stdout.split()
     # The default stack's 9 services, then a gateway and its readers per site.
     assert len(services) == 9 + SMALL.gateways * (1 + SMALL.readers)
+
+
+@pytest.mark.skipif(shutil.which('docker') is None, reason='needs docker compose')
+def test_make_migrate_moves_the_cloud_and_every_gateway(tmp_path, monkeypatch):
+    # The files `make migrate` uses on a running scaled stack.
+    monkeypatch.setattr(topology, 'generate', lambda out, names: None)
+    write(tmp_path, SMALL)
+    files = ['docker-compose.yml', tmp_path / COMPOSE_FILE]
+    files += ['openssl/compose.migrated.yml', tmp_path / MIGRATED_FILE]
+
+    result = subprocess.run(
+        ['docker', 'compose', '--project-name', 'topology-test']
+        + [arg for file in files for arg in ('-f', str(file))]
+        + ['config', '--format', 'json'],
+        cwd=ROOT,
+        env={**os.environ, 'DATA_DIR': str(tmp_path), **topology.pinned_openssl()},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    images = {
+        name: service['image']
+        for name, service in json.loads(result.stdout)['services'].items()
+    }
+    tag = topology.patched_tag(topology.pinned_openssl())
+    assert {name for name, image in images.items() if image.endswith(f':{tag}')} == {
+        'cloud',
+        'gateway-1',
+        'gateway-2',
+        'gateway-s1',
+        'gateway-s2',
+        'gateway-s3',
+    }
+    assert images['reader-s1-1'] == 'dev-course/reader'

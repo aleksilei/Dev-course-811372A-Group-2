@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 
 from lib import tls
+from lib.topology import pinned_openssl
 
 ROOT = Path(__file__).parents[2]
 PROBE = Path(__file__).with_name('tls_probe.py')
@@ -44,7 +45,13 @@ def wait_for(condition, what, timeout=60.0):
 
 class Stack:
     def __init__(self, data_dir: Path) -> None:
-        self.env = {'DATA_DIR': str(data_dir), 'SCAN_INTERVAL': str(SCAN_INTERVAL)}
+        # The pinned OpenSSL, for openssl/compose.migrated.yml (SCRUM-55).
+        self.openssl = pinned_openssl()
+        self.env = {
+            'DATA_DIR': str(data_dir),
+            'SCAN_INTERVAL': str(SCAN_INTERVAL),
+            **self.openssl,
+        }
         self.context = tls.client_context(
             str(data_dir / 'certs' / 'ca.pem'), tls.ADMIN_CLOUD
         )

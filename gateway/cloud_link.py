@@ -19,7 +19,7 @@ class CloudLink:  # pylint: disable=too-many-instance-attributes
     run() keeps the connection open (reconnecting after failures) and routes
     every reply to the request with the same request_id. It also keeps the
     cloud told which readers are connected (report_readers()), and reports
-    openssl.local_version() in the handshake.
+    ssl.OPENSSL_VERSION in the handshake.
     """
 
     def __init__(
@@ -35,7 +35,7 @@ class CloudLink:  # pylint: disable=too-many-instance-attributes
         self.context = context
         self.timeout = timeout
         self.retry_delay = retry_delay
-        self.openssl_version = openssl.local_version()
+        self.openssl_version = ssl.OPENSSL_VERSION
         self._ws: ClientConnection | None = None
         self._pending: dict[str, asyncio.Future] = {}
         # The connected readers, None until report_readers() is first called.

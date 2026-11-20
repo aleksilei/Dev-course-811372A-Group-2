@@ -1,9 +1,9 @@
-import ssl
+import re
 
 import pytest
 
 from lib import openssl
-from lib.config import ConfigError
+from lib.topology import pinned_openssl
 
 
 @pytest.mark.parametrize(
@@ -102,30 +102,12 @@ def test_a_report_is_kept_as_sent():
     assert openssl.reported('OpenSSL 3.5.7 9 Jun 2026') == 'OpenSSL 3.5.7 9 Jun 2026'
 
 
-def test_reports_the_linked_version_by_default(monkeypatch):
-    monkeypatch.delenv(openssl.OVERRIDE_ENV, raising=False)
+def test_the_pinned_openssl_of_the_image_variants_has_the_fix():
+    # openssl/openssl.env: what the -openssl<version> images build (SCRUM-55).
+    pinned = pinned_openssl()
 
-    assert openssl.local_version() == ssl.OPENSSL_VERSION
-
-
-def test_an_empty_override_is_no_override(monkeypatch):
-    monkeypatch.setenv(openssl.OVERRIDE_ENV, '')
-
-    assert openssl.local_version() == ssl.OPENSSL_VERSION
-
-
-def test_the_override_simulates_another_version(monkeypatch):
-    monkeypatch.setenv(openssl.OVERRIDE_ENV, 'OpenSSL 3.5.8')
-
-    assert openssl.local_version() == 'OpenSSL 3.5.8'
-
-
-@pytest.mark.parametrize('override', ['patched', 'LibreSSL 3.8.2', '3.5'])
-def test_an_override_that_is_no_openssl_version_stops_startup(monkeypatch, override):
-    monkeypatch.setenv(openssl.OVERRIDE_ENV, override)
-
-    with pytest.raises(ConfigError, match=openssl.OVERRIDE_ENV):
-        openssl.local_version()
+    assert openssl.is_vulnerable(pinned['OPENSSL_VERSION']) is False
+    assert re.fullmatch('[0-9a-f]{64}', pinned['OPENSSL_SHA256'])
 
 
 PATCHED = openssl.details('OpenSSL 3.5.8')
