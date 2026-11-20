@@ -3,13 +3,13 @@ import logging
 from datetime import UTC, datetime
 
 from cloud.db import Database
-from lib import tls
-from lib.hub import Hub
+from lib import openssl, tls
+from lib.hub import REPORTED_FIELDS, Hub
 
 log = logging.getLogger(__name__)
 
 # The fields kept of each reader a gateway reports, and at most how many.
-READER_FIELDS = ('id', 'address', 'since', 'tls_version', 'cipher', 'key_exchange')
+READER_FIELDS = REPORTED_FIELDS
 MAX_READERS = 1000
 
 
@@ -25,6 +25,8 @@ class GatewayHub(Hub):
         # gateway ID -> its connected readers, while the gateway is connected.
         # Gateways from before reader lists never report one.
         self._readers: dict[str, list[dict]] = {}
+        # The cloud's own OpenSSL, which ends every gateway link (SCRUM-51).
+        self.openssl_version = openssl.local_version()
 
     async def client_connected(
         self, client_id: str, address: str, since: str, group: str | None
@@ -48,11 +50,14 @@ class GatewayHub(Hub):
 
     def connected(self) -> list[dict]:
         """Hub.connected() rows, each with `readers`: the readers connected to
-        the gateway, or None if it hasn't said."""
+        the gateway, or None if it hasn't said, and `weakened`: whether its
+        hybrid key exchange is no stronger than classical (SCRUM-51)."""
         gateways = super().connected()
+        cloud = openssl.details(self.openssl_version)
         with self._lock:
             for gateway in gateways:
                 gateway['readers'] = self._readers.get(gateway['id'])
+                gateway['weakened'] = openssl.weakens_hybrid(gateway, cloud)
         return gateways
 
     def changed(self) -> None:
@@ -104,6 +109,7 @@ class GatewayHub(Hub):
             )
         for reader in kept:
             reader['post_quantum'] = tls.is_post_quantum(reader['key_exchange'])
+            reader.update(openssl.details(openssl.reported(reader['openssl'])))
         kept.sort(key=lambda reader: reader['id'])
         with self._lock:
             self._readers[gateway_id] = kept

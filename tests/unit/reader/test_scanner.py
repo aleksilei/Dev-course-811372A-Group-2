@@ -1,6 +1,7 @@
 import contextlib
 import json
 import logging
+import ssl
 
 import pytest
 from websockets.asyncio.server import serve
@@ -48,6 +49,28 @@ async def test_sends_its_reader_id_on_connect():
         await client.authorize('key-alice')
 
     assert seen == ['rd-1']
+
+
+async def test_reports_its_openssl_version_on_connect(monkeypatch):
+    monkeypatch.setenv('OPENSSL_VERSION_REPORTED', 'OpenSSL 3.5.7')
+    seen = []
+
+    async def gateway(ws):
+        seen.append(ws.request.headers['OpenSSL-Version'])
+        await gateway_passing('key-alice')(ws)
+
+    async with client_of(gateway) as client:
+        await client.authorize('key-alice')
+
+    assert seen == ['OpenSSL 3.5.7']
+
+
+async def test_reports_the_linked_openssl_version_by_default(monkeypatch):
+    monkeypatch.delenv('OPENSSL_VERSION_REPORTED', raising=False)
+
+    client = GatewayClient('ws://127.0.0.1:1', 'rd-1', None)
+
+    assert client.openssl_version == ssl.OPENSSL_VERSION
 
 
 async def test_fails_closed_when_gateway_is_unreachable():

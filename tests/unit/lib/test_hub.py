@@ -9,7 +9,7 @@ from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosedError
 
 from cloud.gateways import GatewayHub
-from lib import tls
+from lib import openssl, tls
 from lib.hub import Hub
 
 
@@ -137,6 +137,8 @@ async def test_client_is_listed_only_while_connected():
                 'cipher': None,
                 'key_exchange': None,
                 'post_quantum': None,
+                # It reported no OpenSSL version: assumed vulnerable.
+                **openssl.details(None),
             }
         ]
     ]
@@ -154,6 +156,29 @@ async def test_lists_the_key_exchange_of_each_client():
         'TLSv1.3',
         'TLS_AES_256_GCM_SHA384',
     )
+
+
+async def test_lists_the_openssl_version_each_client_reports():
+    hub = EchoHub()
+    headers = {'Test-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.7 9 Jun 2026'}
+
+    await hub.handle(FakeConnection(headers, ['{}']))
+
+    [listed] = hub.connected_during_request[0]
+    assert listed['openssl'] == 'OpenSSL 3.5.7 9 Jun 2026'
+    assert listed['openssl_vulnerable'] is True
+    assert listed['openssl_advisory']
+
+
+async def test_a_malformed_openssl_version_is_assumed_vulnerable():
+    hub = EchoHub()
+    headers = {'Test-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.7' + ' ' * 100}
+
+    await hub.handle(FakeConnection(headers, ['{}']))
+
+    [listed] = hub.connected_during_request[0]
+    assert (listed['openssl'], listed['openssl_checked']) == (None, False)
+    assert listed['openssl_vulnerable'] is True
 
 
 async def test_reconnected_client_stays_listed_when_its_old_connection_closes(

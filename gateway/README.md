@@ -13,6 +13,7 @@ Run with `python -m gateway`. It's a stateless relay: WSS server for readers
 | `TLS_CERT` / `TLS_KEY` | `/certs/server.pem` / `/certs/server.key` | certificate readers verify |
 | `TLS_CA` | `/certs/ca.pem` | CA used to verify the cloud |
 | `KEY_EXCHANGE` | `hybrid` | key exchange with the cloud: `hybrid` (`X25519MLKEM768` with `X25519` fallback), `hybrid-only` or `classical`; anything else, or a leftover `OPENSSL_CONF`, stops the gateway at startup. See [lib](../lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
+| `OPENSSL_VERSION_REPORTED` | unset | simulation only: the OpenSSL version to report instead of the linked one, e.g. `OpenSSL 3.5.8`; not an OpenSSL version stops the gateway at startup. See [lib](../lib/README.md#openssl-versions-libopenssl) |
 
 ## Behaviour
 
@@ -21,13 +22,15 @@ Run with `python -m gateway`. It's a stateless relay: WSS server for readers
   cloud unchanged (only a `request_id` is added), and the reader gets back
   `{"result": "pass"}` or `{"result": "fail"}`.
 - **Cloud side** (`cloud_link.py`): all readers share one connection, with
-  post-quantum hybrid key exchange when the cloud supports it. Each
+  post-quantum hybrid key exchange when the cloud supports it. The handshake
+  sends `Gateway-Id` and the gateway's own `OpenSSL-Version`. Each
   forwarded request gets a unique `request_id`, and the cloud's reply is routed
   back to the waiting reader by that ID, so replies may arrive in any order.
   After a lost or failed connection it retries every 3 s.
 - **Connected readers:** the gateway tells the cloud which readers are
-  connected to it (ID, address, connected since, and the TLS version, cipher
-  suite and key exchange of its connection) whenever one
+  connected to it (ID, address, connected since, the TLS version, cipher
+  suite and key exchange of its connection, and the OpenSSL version it
+  reported in its `OpenSSL-Version` header) whenever one
   connects or disconnects, and again after every reconnect to the cloud. Only
   the latest list is sent. A cloud from before this feature answers `fail`,
   which is only logged. The control panel shows the lists.

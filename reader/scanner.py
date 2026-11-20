@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import WebSocketException
 
+from lib import openssl
 from reader.interval import ScanInterval
 
 log = logging.getLogger(__name__)
@@ -17,7 +18,8 @@ class GatewayClient:
     """This reader's WebSocket connection to its gateway.
 
     The connection is opened on the first request and reopened on the next
-    request after any failure.
+    request after any failure. It reports openssl.local_version() to the
+    gateway in the handshake.
     """
 
     def __init__(
@@ -31,6 +33,7 @@ class GatewayClient:
         self.reader_id = reader_id
         self.context = context
         self.timeout = timeout
+        self.openssl_version = openssl.local_version()
         self._ws: ClientConnection | None = None
 
     async def authorize(self, key_uuid: str) -> bool:
@@ -41,7 +44,10 @@ class GatewayClient:
                     self._ws = await connect(
                         self.uri,
                         ssl=self.context,
-                        additional_headers={'Reader-Id': self.reader_id},
+                        additional_headers={
+                            'Reader-Id': self.reader_id,
+                            openssl.OPENSSL_HEADER: self.openssl_version,
+                        },
                     )
                 request = {'id': key_uuid, 'reader_id': self.reader_id}
                 await self._ws.send(json.dumps(request))

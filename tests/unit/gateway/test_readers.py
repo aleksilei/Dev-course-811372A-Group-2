@@ -24,8 +24,11 @@ class StubCloud:
 class ReaderConnection:
     """A reader's connection to the gateway; stays open until close()."""
 
-    def __init__(self, reader_id, address):
-        self.request = SimpleNamespace(headers={'Reader-Id': reader_id})
+    def __init__(self, reader_id, address, openssl_version=None):
+        headers = {'Reader-Id': reader_id}
+        if openssl_version:
+            headers['OpenSSL-Version'] = openssl_version
+        self.request = SimpleNamespace(headers=headers)
         self.remote_address = (address, 50000)
         self.transport = SimpleNamespace(get_extra_info={'ssl_object': None}.get)
         self.closed = asyncio.Event()
@@ -106,5 +109,19 @@ async def test_reports_the_connected_readers_on_every_change(wait_until):
             'tls_version': None,
             'cipher': None,
             'key_exchange': None,
+            'openssl': None,
         }
     ]
+
+
+async def test_reports_each_readers_openssl_version(wait_until):
+    cloud = StubCloud()
+    hub = ReaderHub(cloud)
+    reader = ReaderConnection('rd-1', '10.10.0.2', 'OpenSSL 3.5.7 9 Jun 2026')
+
+    task = asyncio.create_task(hub.handle(reader))
+    await wait_until(lambda: len(cloud.reports) == 2)
+    reader.close()
+    await task
+
+    assert cloud.reports[1][0]['openssl'] == 'OpenSSL 3.5.7 9 Jun 2026'

@@ -7,7 +7,7 @@ import uuid
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import WebSocketException
 
-from lib import tls
+from lib import openssl, tls
 from lib.hub import FAIL
 
 log = logging.getLogger(__name__)
@@ -18,7 +18,8 @@ class CloudLink:  # pylint: disable=too-many-instance-attributes
 
     run() keeps the connection open (reconnecting after failures) and routes
     every reply to the request with the same request_id. It also keeps the
-    cloud told which readers are connected (report_readers()).
+    cloud told which readers are connected (report_readers()), and reports
+    openssl.local_version() in the handshake.
     """
 
     def __init__(
@@ -34,6 +35,7 @@ class CloudLink:  # pylint: disable=too-many-instance-attributes
         self.context = context
         self.timeout = timeout
         self.retry_delay = retry_delay
+        self.openssl_version = openssl.local_version()
         self._ws: ClientConnection | None = None
         self._pending: dict[str, asyncio.Future] = {}
         # The connected readers, None until report_readers() is first called.
@@ -64,7 +66,10 @@ class CloudLink:  # pylint: disable=too-many-instance-attributes
             async with connect(
                 self.uri,
                 ssl=self.context,
-                additional_headers={'Gateway-Id': self.gateway_id},
+                additional_headers={
+                    'Gateway-Id': self.gateway_id,
+                    openssl.OPENSSL_HEADER: self.openssl_version,
+                },
                 open_timeout=self.timeout,
             ) as ws:
                 self._ws = ws

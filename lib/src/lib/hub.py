@@ -7,11 +7,23 @@ from datetime import UTC, datetime
 from websockets.asyncio.server import ServerConnection
 from websockets.exceptions import ConnectionClosed
 
-from lib import tls
+from lib import openssl, tls
 
 log = logging.getLogger(__name__)
 
 FAIL = {'result': 'fail'}
+
+# The fields of each connected() row that a gateway reports to the cloud about
+# its readers (see gateway.readers and cloud.gateways).
+REPORTED_FIELDS = (
+    'id',
+    'address',
+    'since',
+    'tls_version',
+    'cipher',
+    'key_exchange',
+    'openssl',
+)
 
 
 class Hub:
@@ -29,7 +41,8 @@ class Hub:
         # connected() may be called from other threads (the cloud's panel).
         # The lock is never held across an await.
         self._lock = threading.Lock()
-        # client ID -> (connection, connected since, tls.link_details())
+        # client ID -> (connection, connected since, tls.link_details() and
+        # the client's reported OpenSSL version)
         self._clients: dict[str, tuple[ServerConnection, str, dict]] = {}
         self._request_group: ContextVar[str | None] = ContextVar(
             'request_group', default=None
@@ -48,6 +61,7 @@ class Hub:
                     'since': since,
                     **link,
                     'post_quantum': tls.is_post_quantum(link['key_exchange']),
+                    **openssl.details(link['openssl']),
                 }
                 for client_id, (ws, since, link) in sorted(self._clients.items())
             ]
@@ -57,7 +71,10 @@ class Hub:
         since = datetime.now(UTC).isoformat(timespec='seconds')
         # Read on the event loop, which owns the connection: connected() is also
         # called from other threads.
-        link = tls.link_details(ws.transport.get_extra_info('ssl_object'))
+        link = {
+            **tls.link_details(ws.transport.get_extra_info('ssl_object')),
+            'openssl': openssl.reported(ws.request.headers.get(openssl.OPENSSL_HEADER)),
+        }
         group = link['key_exchange']
         token = self._request_group.set(group)
         address = ws.remote_address[0]

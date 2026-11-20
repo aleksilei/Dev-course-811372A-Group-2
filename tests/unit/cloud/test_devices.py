@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from cloud.devices import STATUSES, devices
 
 TLS13 = {'tls_version': 'TLSv1.3', 'cipher': 'TLS_AES_256_GCM_SHA384'}
+VULNERABLE = 'OpenSSL 3.5.7 9 Jun 2026'
 READERS = [
     {'id': 'rd-1', 'gateway_id': 'gw-1', 'zone_name': 'front-door'},
     {'id': 'rd-2', 'gateway_id': 'gw-1', 'zone_name': 'employee-door'},
@@ -10,9 +11,10 @@ READERS = [
 ]
 
 
-def gateway(gateway_id, group, readers=None):
+def gateway(gateway_id, group, readers=None, openssl_version=None):
     """A GatewayHub.connected() row; readers are (id, group) pairs, or None."""
     return {
+        'openssl': openssl_version,
         'id': gateway_id,
         **TLS13,
         'key_exchange': group,
@@ -199,3 +201,47 @@ def test_rows_carry_what_the_readers_list_needs():
     rd99 = rows['reader', 'rd-99']
     assert (rd99['registered_gateway'], rd99['zone_name']) == (None, None)
     assert rd99['gateway'] == 'gw-2'
+
+
+def test_devices_carry_their_openssl_version_apart_from_their_status():
+    online = gateway('gw-1', 'X25519MLKEM768', [('rd-1', 'X25519')], VULNERABLE)
+    online['readers'][0]['openssl'] = 'OpenSSL 3.5.8'
+
+    rows = by_id(devices([online], ['gw-1'], READERS))
+
+    gw1, rd1 = rows['gateway', 'gw-1'], rows['reader', 'rd-1']
+    assert (gw1['openssl'], gw1['openssl_vulnerable']) == (VULNERABLE, True)
+    assert gw1['openssl_advisory']
+    assert gw1['status'] == 'post-quantum'  # SCRUM-51 keeps it a separate flag
+    assert (rd1['openssl'], rd1['openssl_vulnerable']) == ('OpenSSL 3.5.8', False)
+    assert rd1['openssl_advisory'] is None
+
+
+def test_offline_devices_have_no_openssl_version():
+    rows = by_id(devices([], ['gw-1'], READERS))
+
+    assert rows['gateway', 'gw-1']['openssl_vulnerable'] is None
+    assert rows['reader', 'rd-1']['openssl'] is None
+
+
+def test_a_connected_device_without_a_reported_version_is_assumed_vulnerable():
+    rows = by_id(
+        devices(
+            [gateway('gw-1', 'X25519MLKEM768', [('rd-1', 'X25519')])], ['gw-1'], READERS
+        )
+    )
+
+    for key in [('gateway', 'gw-1'), ('reader', 'rd-1')]:
+        assert rows[key]['openssl_vulnerable'] is True
+        assert rows[key]['openssl_checked'] is False
+    # Readers its gateway doesn't list aren't connected: nothing is claimed.
+    assert rows['reader', 'rd-2']['openssl_vulnerable'] is None
+
+
+def test_the_cloud_reports_its_own_openssl():
+    assert devices([], [], [])['cloud'] is None
+    cloud = devices([], [], [], cloud_openssl='OpenSSL 3.5.7 9 Jun 2026')['cloud']
+    assert (cloud['openssl'], cloud['openssl_vulnerable']) == (
+        'OpenSSL 3.5.7 9 Jun 2026',
+        True,
+    )
