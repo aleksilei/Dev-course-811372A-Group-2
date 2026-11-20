@@ -3,6 +3,7 @@
 .git
 venv
 data
+data-scaled
 docs
 **/__pycache__
 **/*.egg-info
