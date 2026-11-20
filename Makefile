@@ -11,10 +11,10 @@ RUFF := $(VENV_BIN)/ruff
 DOCKER := docker
 COMPOSE := $(DOCKER) compose -f docker-compose.yml
 # The default stack with the cloud and the gateways on the -openssl<version>
-# images (make migrate). openssl.env pins that OpenSSL; exported, docker
-# compose fills it into docker-compose.migrated.yml.
-COMPOSE_MIGRATED := $(COMPOSE) -f docker-compose.migrated.yml
-include openssl.env
+# images (make migrate). openssl/openssl.env pins that OpenSSL; exported,
+# docker compose fills it into openssl/compose.migrated.yml.
+COMPOSE_MIGRATED := $(COMPOSE) -f openssl/compose.migrated.yml
+include openssl/openssl.env
 export OPENSSL_VERSION OPENSSL_SHA256
 
 CERTS_DIR := data/certs
@@ -133,7 +133,7 @@ SCALED_DIR := data-scaled
 SCALED_FILE := docker-compose.scaled.yml
 SCALED := env DATA_DIR=./$(SCALED_DIR) $(DOCKER) compose -p dev-course-scaled \
 	-f docker-compose.yml -f $(SCALED_DIR)/$(SCALED_FILE)
-SCALED_MIGRATED := $(SCALED) -f docker-compose.migrated.yml \
+SCALED_MIGRATED := $(SCALED) -f openssl/compose.migrated.yml \
 	-f $(SCALED_DIR)/docker-compose.migrated.yml
 
 run-scaled: check-docker venv

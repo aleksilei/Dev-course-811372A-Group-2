@@ -48,7 +48,7 @@ The assistant asked, with a recommendation each time. The developer decided:
 
 The assistant decided the technical details itself:
 
-- The pin lives in a committed `openssl.env` (version and SHA-256), read by the
+- The pin lives in a committed `openssl/openssl.env` (version and SHA-256), read by the
   Makefile (exported to docker compose), `lib.topology`, the e2e tests and the
   release workflow. `.env` was not used because it is gitignored.
 - The checksum is pinned in the repository instead of being fetched with the
@@ -59,13 +59,13 @@ The assistant decided the technical details itself:
 
 ## 4. What was built
 
-- `docker/build-openssl.sh` and a shared first stage in `cloud/Dockerfile` and
+- `openssl/build-openssl.sh` and a shared first stage in `cloud/Dockerfile` and
   `gateway/Dockerfile`: with `OPENSSL_VERSION` and `OPENSSL_SHA256`, download,
   check and build OpenSSL into `/opt/openssl/lib` (Debian's `/etc/ssl` for
   certificates and config); the final stage registers it with `ldconfig`.
   Without them, the stage is empty and the image keeps Debian's OpenSSL. The
   stage is identical in both Dockerfiles, so builds share it.
-- `docker-compose.migrated.yml` gives the cloud and gateway-1 the
+- `openssl/compose.migrated.yml` gives the cloud and gateway-1 the
   `:openssl<version>` images and build arguments. `make build` builds both
   variants, and `make migrate` recreates the cloud and gateway-1 from them.
 - `lib.openssl`: `OVERRIDE_ENV` and `local_version()` are gone; clients report
@@ -97,7 +97,7 @@ asked two questions, and the developer decided:
 | How to start it | `make migrate` detects the running stack (the scaled one if it is up, else the default one), "as long as the implementation is simple" |
 | What moves | the cloud and every gateway, classical ones included (they run the same vulnerable OpenSSL), in both stacks; readers stay on 3.5.7 as the ticket says |
 
-What changed: `docker-compose.migrated.yml` also moves gateway-2, and
+What changed: `openssl/compose.migrated.yml` also moves gateway-2, and
 `lib.topology` writes a second override, `data-scaled/docker-compose.migrated.yml`,
 that moves every site's gateway. `make migrate` picks the scaled files when
 that stack has containers, and starts the cloud plus every `gateway-*`
@@ -105,6 +105,12 @@ service that compose lists. The scaled compose command now starts with `env`,
 so it also works when expanded from a shell variable. A unit test runs
 `docker compose config` on the scaled migration files, and the e2e test now
 migrates both gateways.
+
+The developer then noted that the new files were crowding the repository
+root. The assistant moved the build script, the pin and the migration
+override into one `openssl/` folder (as `build-openssl.sh`, `openssl.env` and
+`compose.migrated.yml`), so the root gains one folder, and everything the
+variants need can go together once the base image ships the fix.
 
 ## 6. Verification and limits
 

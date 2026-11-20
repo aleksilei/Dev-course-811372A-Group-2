@@ -7,7 +7,7 @@ set -eu
 
 mkdir -p /opt/openssl/lib
 [ -n "${OPENSSL_VERSION:-}" ] || exit 0
-: "${OPENSSL_SHA256:?OPENSSL_SHA256 must be set with OPENSSL_VERSION (see openssl.env)}"
+: "${OPENSSL_SHA256:?OPENSSL_SHA256 must be set with OPENSSL_VERSION (see openssl/openssl.env)}"
 
 apt-get update
 apt-get install --yes --no-install-recommends build-essential ca-certificates curl perl

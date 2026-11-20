@@ -27,7 +27,7 @@ READERS = {
 }
 HYBRID_ONLY = ('docker-compose.yml', 'tests/e2e/compose.hybrid-only.yml')
 # make migrate: the cloud and gateway-1 on the -openssl<version> images.
-MIGRATED = ('docker-compose.yml', 'docker-compose.migrated.yml')
+MIGRATED = ('docker-compose.yml', 'openssl/compose.migrated.yml')
 
 
 def seed_outcome(key: str, reader_id: str) -> str:

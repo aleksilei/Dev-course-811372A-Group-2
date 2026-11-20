@@ -211,7 +211,7 @@ def test_make_migrate_moves_the_cloud_and_every_gateway(tmp_path, monkeypatch):
     monkeypatch.setattr(topology, 'generate', lambda out, names: None)
     write(tmp_path, SMALL)
     files = ['docker-compose.yml', tmp_path / COMPOSE_FILE]
-    files += ['docker-compose.migrated.yml', tmp_path / MIGRATED_FILE]
+    files += ['openssl/compose.migrated.yml', tmp_path / MIGRATED_FILE]
 
     result = subprocess.run(
         ['docker', 'compose', '--project-name', 'topology-test']

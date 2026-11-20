@@ -162,7 +162,7 @@ many of the last sites' gateways have no ML-KEM (default 2), like `gateway-2`.
   `make ps-scaled`, `make logs-scaled SERVICE=reader-s3-2`, and
   `make stop-scaled`. The control panel's CA is `data-scaled/certs/ca.pem`.
 - The cloud and the odd-numbered hybrid sites' gateways run the
-  `-openssl<version>` images (the version `openssl.env` pins), so the panel
+  `-openssl<version>` images (the version `openssl/openssl.env` pins), so the panel
   shows patched sites next to vulnerable ones (see
   [above](#openssl-versions-libopenssl)). A vulnerable cloud would weaken
   every hybrid site. Readers keep the base image's OpenSSL.

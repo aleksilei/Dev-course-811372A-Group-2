@@ -1,12 +1,12 @@
 # Build context: repository root (see docker-compose.yml)
 
-# With OPENSSL_VERSION and OPENSSL_SHA256 (see openssl.env), this builds the
+# With OPENSSL_VERSION and OPENSSL_SHA256 (see openssl/openssl.env), this builds the
 # -openssl<version> image, which uses that OpenSSL instead of the base image's
 # (SCRUM-55). Without them, the image keeps the base image's OpenSSL.
 FROM python:3.15-slim AS openssl
 ARG OPENSSL_VERSION=
 ARG OPENSSL_SHA256=
-COPY docker/build-openssl.sh /usr/local/bin/
+COPY openssl/build-openssl.sh /usr/local/bin/
 RUN build-openssl.sh
 
 FROM python:3.15-slim

@@ -64,10 +64,10 @@ cloud and gateway images come in two variants from one Dockerfile (SCRUM-55):
 | Image | OpenSSL |
 |---|---|
 | `dev-course/cloud`, `dev-course/gateway` | the base image's (3.5.7, affected) |
-| `dev-course/cloud:openssl3.5.9`, `dev-course/gateway:openssl3.5.9` | the version `openssl.env` pins, built from source and loaded ahead of Debian's `libssl` |
+| `dev-course/cloud:openssl3.5.9`, `dev-course/gateway:openssl3.5.9` | the version `openssl/openssl.env` pins, built from source and loaded ahead of Debian's `libssl` |
 
 - `make build` builds both. `make migrate` moves the cloud and every gateway
-  to the variants (`docker-compose.migrated.yml`), on the scaled stack if it
+  to the variants (`openssl/compose.migrated.yml`), on the scaled stack if it
   is running, else on the default stack. `make run` or `make run-scaled`
   moves them back.
 - The scaled stack starts half migrated: its cloud and odd-numbered hybrid
@@ -76,11 +76,11 @@ cloud and gateway images come in two variants from one Dockerfile (SCRUM-55):
   ML-KEM doesn't matter to them.
 - **We update this OpenSSL ourselves**: Debian's security updates don't reach
   it. For a new OpenSSL release, bump `OPENSSL_VERSION` and `OPENSSL_SHA256`
-  in `openssl.env` together (the checksum is the `.sha256` file OpenSSL
+  in `openssl/openssl.env` together (the checksum is the `.sha256` file OpenSSL
   publishes with the release).
 - When the base image ships the fix itself, CI (`test.yml`) warns. Then the
-  variants, `openssl.env`, `docker/build-openssl.sh` and
-  `docker-compose.migrated.yml` can go.
+  variants and the `openssl/` folder, which holds everything they need, can
+  go.
 
 ### Scaled stack (opt-in)
 

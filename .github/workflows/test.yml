@@ -39,7 +39,7 @@ jobs:
           print(ssl.OPENSSL_VERSION);
           openssl.is_vulnerable(ssl.OPENSSL_VERSION) or print(
           f"::warning::python:3.15-slim now ships {ssl.OPENSSL_VERSION}, which has the
-          ML-KEM fix: the -openssl images and openssl.env can go (SCRUM-55)")'
+          ML-KEM fix: the -openssl images and openssl/ can go (SCRUM-55)")'
 
       - run: make lint
 

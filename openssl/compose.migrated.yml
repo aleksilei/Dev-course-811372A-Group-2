@@ -3,14 +3,14 @@
 # doesn't use ML-KEM, but runs the same vulnerable OpenSSL. The readers' hop to
 # their gateway is classical: they keep the base image's OpenSSL. On top of
 # docker-compose.yml:
-#   make migrate    (or: docker compose --env-file openssl.env
-#                    -f docker-compose.yml -f docker-compose.migrated.yml
+#   make migrate    (or: docker compose --env-file openssl/openssl.env
+#                    -f docker-compose.yml -f openssl/compose.migrated.yml
 #                    up --build -d cloud gateway-1 gateway-2)
 # `make run` goes back to the base image's OpenSSL everywhere.
 
 x-openssl: &openssl
-  OPENSSL_VERSION: ${OPENSSL_VERSION:?set from openssl.env, e.g. by make}
-  OPENSSL_SHA256: ${OPENSSL_SHA256:?set from openssl.env, e.g. by make}
+  OPENSSL_VERSION: ${OPENSSL_VERSION:?set from openssl/openssl.env, e.g. by make}
+  OPENSSL_SHA256: ${OPENSSL_SHA256:?set from openssl/openssl.env, e.g. by make}
 
 services:
   cloud:

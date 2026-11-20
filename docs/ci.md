@@ -30,9 +30,9 @@ newest release (a pre-release gets only its own tag).
 
 The cloud and gateway also get their
 [OpenSSL variants](../README.md#openssl-image-variants), built with the
-OpenSSL that `openssl.env` pins: `1.0.0-openssl3.5.9`, `1.0-openssl3.5.9`
+OpenSSL that `openssl/openssl.env` pins: `1.0.0-openssl3.5.9`, `1.0-openssl3.5.9`
 and, for `latest`, `openssl3.5.9`. The e2e tests migrate to them
-(`docker-compose.migrated.yml`). Their OpenSSL stage is the same in both
+(`openssl/compose.migrated.yml`). Their OpenSSL stage is the same in both
 Dockerfiles, so it is compiled once per platform; for arm64 that runs under
 QEMU, which is the slowest part of a release.
 

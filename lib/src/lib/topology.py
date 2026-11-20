@@ -5,8 +5,8 @@ Usage: python -m lib.topology <out dir> <gateways> <readers per gateway> [classi
 Writes into <out dir>, for `make run-scaled`:
 - docker-compose.scaled.yml: an override adding the sites to docker-compose.yml
 - docker-compose.migrated.yml: for `make migrate`, an override moving every
-  site's gateway to the -openssl<version> image (with the root
-  docker-compose.migrated.yml for the default stack's gateways)
+  site's gateway to the -openssl<version> image (with
+  openssl/compose.migrated.yml for the default stack's gateways)
 - certs/: the dev CA and the server certificates, one per site gateway
 - seed.sql: cloud/seed.sql plus the sites' gateways, readers and groups
 
@@ -56,7 +56,7 @@ ZONES = [
 SITE_SCAN_INTERVALS = [(1, 3), (2, 8), (5, 15), (10, 30)]
 
 # The OpenSSL that the -openssl<version> image variants build (SCRUM-55).
-OPENSSL_ENV = ROOT / 'openssl.env'
+OPENSSL_ENV = ROOT / 'openssl' / 'openssl.env'
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ class Topology:
 
 
 def pinned_openssl(path: Path = OPENSSL_ENV) -> dict[str, str]:
-    """The OPENSSL_VERSION and OPENSSL_SHA256 that openssl.env pins."""
+    """The OPENSSL_VERSION and OPENSSL_SHA256 that openssl/openssl.env pins."""
     lines = path.read_text(encoding='utf-8').splitlines()
     return dict(
         line.split('=', 1) for line in lines if line and not line.startswith('#')

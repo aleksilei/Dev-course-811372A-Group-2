@@ -2,7 +2,7 @@
 # arm64, run the e2e tests on the amd64 ones, and only then push those same
 # images to the GitHub container registry (GHCR) as
 # ghcr.io/<owner>/<repo>/{cloud,gateway,reader}:<version>. The cloud and
-# gateway also get a variant with the OpenSSL that openssl.env pins (SCRUM-55),
+# gateway also get a variant with the OpenSSL that openssl/openssl.env pins (SCRUM-55),
 # tagged <version>-openssl<openssl version> (and openssl<openssl version> for
 # latest).
 name: Release
@@ -87,8 +87,8 @@ jobs:
 
       - name: Read the pinned OpenSSL
         run: |
-          grep -v '^#' openssl.env | grep . >> "$GITHUB_ENV"
-          source openssl.env
+          grep -v '^#' openssl/openssl.env | grep . >> "$GITHUB_ENV"
+          source openssl/openssl.env
           echo "VARIANT=openssl$OPENSSL_VERSION" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v7

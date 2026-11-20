@@ -103,7 +103,7 @@ def test_a_report_is_kept_as_sent():
 
 
 def test_the_pinned_openssl_of_the_image_variants_has_the_fix():
-    # openssl.env: what the -openssl<version> images build (SCRUM-55).
+    # openssl/openssl.env: what the -openssl<version> images build (SCRUM-55).
     pinned = pinned_openssl()
 
     assert openssl.is_vulnerable(pinned['OPENSSL_VERSION']) is False

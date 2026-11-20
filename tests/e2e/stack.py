@@ -45,7 +45,7 @@ def wait_for(condition, what, timeout=60.0):
 
 class Stack:
     def __init__(self, data_dir: Path) -> None:
-        # The pinned OpenSSL, for docker-compose.migrated.yml (SCRUM-55).
+        # The pinned OpenSSL, for openssl/compose.migrated.yml (SCRUM-55).
         self.openssl = pinned_openssl()
         self.env = {
             'DATA_DIR': str(data_dir),
