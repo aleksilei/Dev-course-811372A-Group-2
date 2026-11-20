@@ -1,8 +1,8 @@
 from gateway.cloud_link import CloudLink
-from lib.hub import Hub
+from lib.hub import REPORTED_FIELDS, Hub
 
 # What the cloud is told about each connected reader.
-REPORTED = ('id', 'address', 'since', 'tls_version', 'cipher', 'key_exchange')
+REPORTED = REPORTED_FIELDS
 
 
 class ReaderHub(Hub):

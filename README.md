@@ -43,6 +43,10 @@ make run
   only), with `reader-5` behind it. The cloud falls back to `X25519` for it;
   uncomment the `KEY_EXCHANGE: hybrid-only` line in `docker-compose.yml` to see it
   refused (and `reader-5` failing closed).
+- Every device and the cloud report their OpenSSL version. The images run
+  3.5.7, which is affected by the simulated ML-KEM vulnerability (SCRUM-45),
+  so the panel flags all of them, and a hybrid gateway counts as classical in
+  the stakeholder views. See [lib](lib/README.md#openssl-versions-libopenssl).
 - Stop: `make stop`
 
 All state lives in `data/` (gitignored): `data/certs/` and the SQLite database

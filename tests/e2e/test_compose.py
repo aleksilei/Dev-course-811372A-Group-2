@@ -7,6 +7,7 @@ down and bring it back.
 
 import pytest
 
+from lib import openssl
 from tests.e2e.stack import wait_for
 
 # Who may open which door with the example data in cloud/seed.sql.
@@ -148,6 +149,23 @@ def test_every_device_reports_tls_1_3_and_its_key_exchange(stack):
     assert rows['gateway', 'gw-1']['status'] == 'post-quantum'
     assert result['counts']['reader']['classical'] == len(READERS)
     assert result['panel']['tls_version'] == 'TLSv1.3'
+
+
+def test_every_device_reports_the_images_openssl_and_its_vulnerability(stack):
+    # The default stack simulates no other version: all images share one base.
+    result = stack.api('devices')
+    reports = [*result['devices'], result['cloud']]
+    versions = {report['openssl'] for report in reports}
+    assert len(versions) == 1
+    [version] = versions
+    assert version.startswith('OpenSSL 3.')
+    vulnerable = openssl.is_vulnerable(version)
+    assert {report['openssl_vulnerable'] for report in reports} == {vulnerable}
+    assert {report['openssl_checked'] for report in reports} == {True}
+
+    # gw-1 negotiates hybrid: with a vulnerable ML-KEM it counts as weakened.
+    summary = stack.api('summary')
+    assert [g['id'] for g in summary['weakened']] == (['gw-1'] if vulnerable else [])
 
 
 @pytest.mark.parametrize(

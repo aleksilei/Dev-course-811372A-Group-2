@@ -345,6 +345,7 @@ def test_summary_api_reports_offline_seed_gateways(get):
         'known': 2,
         'connected': 0,
         'hybrid': 0,
+        'weakened': 0,
         'classical': 0,
         'unknown': 0,
         'offline': 2,

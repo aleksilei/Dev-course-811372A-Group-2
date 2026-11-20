@@ -20,13 +20,17 @@ client sends (`0x16` starts a TLS handshake); a `308` keeps a POST a POST.
 | `GATEWAY_PORT` | `8443` | |
 | `PANEL_PORT` | `8444` | |
 | `KEY_EXCHANGE` | `hybrid` | key exchange with gateways (port 8443 only): `hybrid` (`X25519MLKEM768` with `X25519` fallback), `hybrid-only` (refuses classical gateways) or `classical`; anything else, or a leftover `OPENSSL_CONF`, stops the cloud at startup. See [lib](../lib/README.md#gateway--cloud-ml-kem-hybrid-with-classical-fallback) |
+| `OPENSSL_VERSION_REPORTED` | unset | simulation only: the cloud's own OpenSSL version to check instead of the linked one; not an OpenSSL version stops the cloud at startup. See [lib](../lib/README.md#openssl-versions-libopenssl) |
 
 ## Gateway protocol
 
 A gateway opens `wss://<cloud>:8443` with a `Gateway-Id: <ID>` handshake header
 and keeps the connection open. The cloud lists it under "connected gateways"
 for as long as the connection lives. The ID is **not verified** (accepted risk
-in the spec).
+in the spec). Neither is the gateway's `OpenSSL-Version` header (e.g.
+`OpenSSL 3.5.7 9 Jun 2026`), which the panel checks for known vulnerabilities
+(see [lib](../lib/README.md#openssl-versions-libopenssl)); without it, or with
+a version the cloud can't check, the gateway is assumed vulnerable.
 
 ```jsonc
 // gateway -> cloud: the reader's request plus the gateway's request_id
@@ -93,8 +97,18 @@ score and status rules live:
   post-quantum hybrid key exchange (offline gateways are not counted).
 - **Status:** green when every known gateway is connected and on hybrid; red
   when a gateway is offline or more than half of the connected ones are
-  classical; amber otherwise (including a key exchange the cloud couldn't
-  read).
+  classical or weakened; amber otherwise (including a key exchange the cloud
+  couldn't read).
+- **Weakened gateways** (SCRUM-51): a gateway that negotiated hybrid key
+  exchange, but where the OpenSSL at either end of the link, its own or the
+  cloud's, has an ML-KEM advisory or can't be confirmed patched. Its ML-KEM
+  can't be trusted, so it is no stronger than classical: it doesn't count
+  towards gateway coverage (or the CIO's "protected" gateways), counts like a
+  classical gateway for the status, and is a top risk ("The cloud runs a
+  vulnerable OpenSSL" when the cloud's end is the cause) and a migration
+  blocker. Switching to `KEY_EXCHANGE=hybrid-only` would not cut it off.
+  Traffic readiness can't tell, because access events record only the key
+  exchange.
 - Traffic scores use access events from the rolling last hour. The security
   officer view shows the non-PQC share alongside the per-gateway breakdown.
 
@@ -131,7 +145,8 @@ The Operations tab is laid out to stay usable with many readers and gateways (tr
 
 - Tiles at the top count the connected gateways (of all known), those on
   classical key exchange, the connected readers (of all registered), any
-  unregistered readers that are connected, and the keys.
+  unregistered readers that are connected, the connected devices (and the
+  cloud) on a vulnerable OpenSSL (amber when any), and the keys.
 - A toolbar that stays at the top of the window filters the readers by
   gateway and by reader ID or zone text. The filter applies to "Readers",
   "Room access" and "Group rooms".
@@ -153,6 +168,12 @@ The Operations tab is laid out to stay usable with many readers and gateways (tr
 
   Reader IDs are taken on trust, like gateway IDs. Reader connections are live
   reports from gateways; only gateway-to-cloud sessions are kept as history.
+- Each reader's and gateway's **OpenSSL** column shows the version it reports
+  (SCRUM-51). A vulnerable one is amber and marked `: vulnerable` (hover for
+  the advisory). A connected device that reports none is amber
+  `not reported: assumed vulnerable`, and one with a version the cloud can't
+  check is amber `…: can't check, assumed vulnerable`. A device that isn't
+  connected shows `–`.
 - Wide or long tables scroll inside their own box, with the header rows and
   the key or group column kept in view. The room columns of the matrices are
   grouped under their gateway.
@@ -160,7 +181,9 @@ The Operations tab is laid out to stay usable with many readers and gateways (tr
 "Connected gateways" shows the key exchange of each gateway's connection:
 post-quantum hybrid, or classical (in amber) for gateways without ML-KEM. A
 line above the table counts the classical ones, which switching the cloud to
-`KEY_EXCHANGE=hybrid-only` would disconnect.
+`KEY_EXCHANGE=hybrid-only` would disconnect, and the weakened ones, whose
+hybrid key exchange is no stronger than classical. A second line gives the
+cloud's own OpenSSL, which ends every gateway link.
 
 The panel edits group memberships, which decide access: a key opens a reader
 when they share a group. "Room access" shows the result per key and reader.
@@ -173,10 +196,10 @@ Readers, gateways and the groups themselves are edited through sqlite-web
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical), `tls_version` and `cipher` of the connection, and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`), or `null` if the gateway hasn't reported them |
-| `GET /api/devices` | every gateway and reader: `statuses`, `counts` per type (`gateway`, `reader`) and status, `devices` (`id`, `type`, `gateway`, `registered`, `state`, `status`, `address` and `since` of its connection, for readers `registered_gateway` and `zone_name` from the database, and `links`: each `name`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`; a reader's own link first, then its gateway's) and `panel`, the request's own link |
+| `GET /api/gateways` | connected gateways: `id`, `address`, `since`, `key_exchange` (the group the connection negotiated, e.g. `X25519MLKEM768`, or `null` if unknown), `post_quantum` (`true` for an ML-KEM hybrid, `false` for classical), `tls_version` and `cipher` of the connection, the OpenSSL fields (`openssl`: the reported version or `null`; `openssl_checked`: whether the cloud could check it; `openssl_vulnerable`: `true` when an advisory matches or it couldn't be checked; `openssl_affects`: what the advisories break, e.g. `["ml-kem"]`; `openssl_advisory`: why), `weakened` (hybrid, but with a vulnerable ML-KEM at either end), and `readers`: the readers connected to the gateway (`id`, `address`, `since`, `tls_version`, `cipher`, `key_exchange`, `post_quantum` and the OpenSSL fields), or `null` if the gateway hasn't reported them |
+| `GET /api/devices` | every gateway and reader: `statuses`, `counts` per type (`gateway`, `reader`) and status, `devices` (`id`, `type`, `gateway`, `registered`, `state`, `status`, `address` and `since` of its connection, the OpenSSL fields as in `/api/gateways` (all `null` for a device that isn't connected; never part of `status`), for readers `registered_gateway` and `zone_name` from the database, and `links`: each `name`, `tls_version`, `cipher`, `key_exchange`, `post_quantum`; a reader's own link first, then its gateway's), `panel`, the request's own link, and `cloud`, the OpenSSL fields of the cloud itself |
 | `GET /api/connections?gateway=` | newest 100 gateway-to-cloud connections, optionally filtered by gateway before limiting; each row has `gateway_id`, `address`, `key_exchange`, `post_quantum`, `connected_at` and `disconnected_at` (null while connected) |
-| `GET /api/summary` | the stakeholder views' data: `readiness` (traffic weighted, 0–1 or `null` with no recent events), `gateway_coverage` (0–1 or `null` with no connected gateways), `non_pqc_traffic_share`, `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `classical`, `unknown`, `offline`), the `classical`, `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` (events in the last hour) and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
+| `GET /api/summary` | the stakeholder views' data: `readiness` (traffic weighted, 0–1 or `null` with no recent events), `gateway_coverage` (0–1 or `null` with no connected gateways), `non_pqc_traffic_share`, `status` (`green`/`amber`/`red`), gateway counts (`known`, `connected`, `hybrid`, `weakened`, `classical`, `unknown`, `offline`; `hybrid` leaves out the weakened ones), the `classical`, `weakened` (also with `openssl`), `unknown` and `offline` gateways (`id`, `key_exchange`, `readers`, `traffic_share`), `classical_traffic_share`, `hybrid_only_disconnects` (`gateways`, `readers`), `readers`, `recent_events` (events in the last hour), `cloud` (the cloud's OpenSSL fields) and `risks` (`severity`, `title`, `detail`, `gateways`), most severe first |
 | `GET /api/readers` | readers with their `gateway_id` and `zone_name` |
 | `GET /api/events?key=&reader=` | newest 100 access events, optionally filtered |
 | `GET /api/access` | `keys` (in a group or seen at a reader), `groups`, and the memberships `key_groups` (`key_uuid`, `group_id`) and `reader_groups` (`reader_id`, `group_id`) |

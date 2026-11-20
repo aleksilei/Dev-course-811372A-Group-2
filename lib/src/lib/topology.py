@@ -11,7 +11,9 @@ Site n is gateway gw-s<n> with readers rd-s<n>-1.. on a reader VLAN of its own,
 10.10.<n>.0/24, the gateway at 10.10.<n>.10. The last `classical` sites stand
 in for gateways without ML-KEM, like gateway-2 in the default stack. Sites
 take turns at the scan ranges in SITE_SCAN_INTERVALS, so some are much busier
-than others.
+than others. The cloud and the odd-numbered hybrid sites (gateway and readers)
+report PATCHED_OPENSSL, so the panel shows patched sites next to vulnerable
+ones (SCRUM-51).
 
 When the topology changes, the certificates are made again and the scaled
 cloud database is deleted, so the cloud seeds itself with the new sites.
@@ -23,6 +25,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from lib.certs import COMPOSE_SERVERS, generate
+from lib.openssl import ML_KEM, OVERRIDE_ENV, fixed_in
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE_SEED = ROOT / 'cloud' / 'seed.sql'
@@ -49,6 +52,10 @@ ZONES = [
 # very quiet, busy, ... On average 2, 5, 10 and 20 s.
 SITE_SCAN_INTERVALS = [(1, 3), (2, 8), (5, 15), (10, 30)]
 
+# What the patched sites report instead of the images' (vulnerable) OpenSSL,
+# through lib.openssl.OVERRIDE_ENV.
+PATCHED_OPENSSL = f'OpenSSL {fixed_in(ML_KEM)} (simulated)'
+
 
 @dataclass(frozen=True)
 class Topology:
@@ -69,6 +76,10 @@ class Topology:
 
     def is_classical(self, site: int) -> bool:
         return site > self.gateways - self.classical
+
+    def is_patched(self, site: int) -> bool:
+        """Whether the site simulates an OpenSSL with the ML-KEM fix."""
+        return site % 2 == 1 and not self.is_classical(site)
 
 
 def gateway_ip(site: int) -> str:
@@ -100,8 +111,12 @@ def compose(topology: Topology) -> dict:
     data = '${DATA_DIR}'
     ca = f'{data}/certs/ca.pem:/certs/ca.pem:ro'
     services: dict[str, dict] = {
-        # The cloud seeds itself from the scaled seed.sql instead.
-        'cloud': {'volumes': [f'{data}/seed.sql:/app/cloud/seed.sql:ro']},
+        # The cloud seeds itself from the scaled seed.sql instead. A vulnerable
+        # cloud would weaken every hybrid site, patched or not.
+        'cloud': {
+            'environment': {OVERRIDE_ENV: PATCHED_OPENSSL},
+            'volumes': [f'{data}/seed.sql:/app/cloud/seed.sql:ro'],
+        },
     }
     networks: dict[str, dict] = {}
     for n in topology.sites():
@@ -114,6 +129,8 @@ def compose(topology: Topology) -> dict:
         environment = {'CLOUD': 'cloud:8443', 'ID': f'gw-s{n}'}
         if topology.is_classical(n):
             environment['KEY_EXCHANGE'] = 'classical'
+        patched = {OVERRIDE_ENV: PATCHED_OPENSSL} if topology.is_patched(n) else {}
+        environment.update(patched)
         services[f'gateway-s{n}'] = {
             'image': 'dev-course/gateway',
             'pull_policy': 'never',
@@ -138,6 +155,7 @@ def compose(topology: Topology) -> dict:
                     'KEYS': 'key-alice,key-bob,key-carol,key-mallory',
                     'SCAN_INTERVAL_MIN': str(low),
                     'SCAN_INTERVAL_MAX': str(high),
+                    **patched,
                 },
                 'volumes': [ca],
                 'networks': [network],

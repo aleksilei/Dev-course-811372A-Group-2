@@ -62,6 +62,20 @@ async def test_sends_gateway_id_and_request_id(wait_until):
     }
 
 
+async def test_reports_its_openssl_version_on_connect(wait_until, monkeypatch):
+    monkeypatch.setenv('OPENSSL_VERSION_REPORTED', 'OpenSSL 3.5.8')
+    seen = []
+
+    async def cloud(ws):
+        seen.append(ws.request.headers['OpenSSL-Version'])
+        await ws.wait_closed()
+
+    async with linked_to(cloud, wait_until):
+        await wait_until(lambda: seen)
+
+    assert seen == ['OpenSSL 3.5.8']
+
+
 async def test_routes_replies_to_the_matching_request(wait_until):
     async def cloud_answering_in_reverse_order(ws):
         requests = [json.loads(await ws.recv()), json.loads(await ws.recv())]

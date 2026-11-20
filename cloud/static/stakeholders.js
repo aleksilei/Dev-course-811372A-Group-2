@@ -130,6 +130,7 @@ const VIEWS = {
       addressed: [
         'A green / amber / red status for the post-quantum transition.',
         'The top three risks in plain language.',
+        'Library vulnerabilities: a gateway on a vulnerable OpenSSL counts as classical and is a top risk.',
         'A view to show our key customer where we stand.',
       ],
       notYet: [
@@ -155,6 +156,10 @@ const VIEWS = {
       const blockers = [
         ...summary.classical.map((g) => [
           g.id, 'classical key exchange', g.readers, percent(g.traffic_share), 'upgrade or replace',
+        ]),
+        // Hybrid, but on an OpenSSL whose ML-KEM is vulnerable (SCRUM-51).
+        ...summary.weakened.map((g) => [
+          g.id, 'vulnerable OpenSSL (ML-KEM)', g.readers, percent(g.traffic_share), 'upgrade OpenSSL',
         ]),
         ...summary.unknown.map((g) => [
           g.id, 'key exchange unknown', g.readers, percent(g.traffic_share), 'check the gateway',

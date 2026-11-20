@@ -106,6 +106,7 @@ class PanelHandler(BaseHTTPRequestHandler):
                     db.gateway_ids(),
                     db.readers(),
                     self.connection,
+                    self.server.gateways.openssl_version,
                 )
             )
         elif url.path == '/api/gateways':
@@ -123,6 +124,7 @@ class PanelHandler(BaseHTTPRequestHandler):
                         (now - TRAFFIC_WINDOW).isoformat(timespec='seconds'),
                         now.isoformat(timespec='seconds'),
                     ),
+                    cloud_openssl=self.server.gateways.openssl_version,
                 )
             )
         elif url.path in STATIC_FILES:

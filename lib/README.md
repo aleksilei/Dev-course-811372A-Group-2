@@ -9,6 +9,7 @@ into the dev venv by `make install`); it also pins the one runtime dependency,
 | `lib.config` | `env(name, default=None)`: reads an environment variable; without a default it is required (`ConfigError`). `setup_logging()`. |
 | `lib.tls` | `server_context()` / `client_context()` and the key-exchange groups of each hop (`gateway_cloud()` reads the gateway → cloud ones from `KEY_EXCHANGE`). `negotiated_group()` / `is_post_quantum()` for what a connection negotiated. |
 | `lib.hub` | `Hub`: the server end of a WebSocket hop (see below). |
+| `lib.openssl` | The OpenSSL version each device and the cloud report, the table of advisories, and when a hybrid link is weakened (see [below](#openssl-versions-libopenssl)). |
 | `lib.certs` | Dev CA and server certificates (`make certs`). |
 | `lib.topology` | The opt-in scaled stack (`make run-scaled`): writes a compose override with extra gateway sites, their certificates and the seed data into `data-scaled/`. Host-side only. See [below](#scaled-stack-libtopology). |
 
@@ -115,6 +116,35 @@ I/O happens on one event-loop thread. The library's threaded API was dropped
 because it reads and writes one OpenSSL connection from two threads, which
 crashed the process under load.
 
+## OpenSSL versions (`lib.openssl`)
+
+Readers and gateways report the OpenSSL version they run in an
+`OpenSSL-Version` handshake header (`ssl.OPENSSL_VERSION`, e.g.
+`OpenSSL 3.5.7 9 Jun 2026`), and `Hub` lists it with each client. Gateways
+pass their readers' versions on in the reader report. The cloud checks each
+version, and its own, against `ADVISORIES`, and the control panel highlights
+the vulnerable ones (SCRUM-51).
+
+- Each `Advisory` has the affected range (`first` up to, not including,
+  `fixed`) and what it breaks (`affects`). Only `ML_KEM` advisories weaken a
+  hybrid link (`weakens_hybrid()`): one at either end of a gateway's link,
+  the gateway's or the cloud's, makes its key exchange no stronger than
+  classical. Advisory texts and the "upgrade to" version are built from the
+  table (`fixed_in()`), so adding an advisory is one row and a release.
+- The one advisory today is the course's simulated ML-KEM vulnerability
+  (SCRUM-45). The images run an affected version, so every device and the
+  cloud are affected unless they simulate a fix.
+- Fails closed: a connected device that reports no version, or one the cloud
+  can't check (over 64 characters, or not OpenSSL, e.g. LibreSSL), is assumed
+  vulnerable to every advisory. An old device that was never restarted onto
+  a patch most likely runs an old version. A device that isn't connected
+  claims nothing (`UNKNOWN`). Versions are taken on trust, like device IDs,
+  because devices aren't authenticated.
+- `OPENSSL_VERSION_REPORTED` is a simulation knob for devices and the cloud:
+  all the images share one base image, so this is how one reports another
+  version, e.g. a patched `OpenSSL 3.5.8`. The scaled stack uses it; the
+  default stack doesn't.
+
 ## Scaled stack (`lib.topology`)
 
 `make run-scaled` (see the [root README](../README.md#scaled-stack-opt-in))
@@ -134,6 +164,11 @@ many of the last sites' gateways have no ML-KEM (default 2), like `gateway-2`.
 - It uses the default stack's ports, so `make stop` first. Then
   `make ps-scaled`, `make logs-scaled SERVICE=reader-s3-2`, and
   `make stop-scaled`. The control panel's CA is `data-scaled/certs/ca.pem`.
+- The cloud and the odd-numbered hybrid sites (gateway and readers) report
+  the first fixed version, `OpenSSL 3.5.8 (simulated)`, so the panel shows
+  patched sites next to vulnerable ones (see
+  [above](#openssl-versions-libopenssl)). A vulnerable cloud would weaken
+  every hybrid site.
 - Sites take turns being busy, normal, quiet and very quiet: their readers
   wait 1-3, 2-8, 5-15 or 10-30 s between scans, so traffic per site differs
   by up to 10x (see [reader/README.md](../reader/README.md#scan-interval)).

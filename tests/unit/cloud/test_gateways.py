@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from cloud.gateways import MAX_READERS, GatewayHub
+from cloud.gateways import MAX_READERS, READER_FIELDS, GatewayHub
+from lib import openssl
 
 READER = {
     'id': 'rd-3',
@@ -13,6 +14,7 @@ READER = {
     'tls_version': 'TLSv1.3',
     'cipher': 'TLS_AES_256_GCM_SHA384',
     'key_exchange': 'X25519',
+    'openssl': 'OpenSSL 3.5.7 9 Jun 2026',
 }
 
 
@@ -20,10 +22,17 @@ class GatewayConnection:
     """A gateway's connection to the cloud: sends `messages`, then stays open
     until close()."""
 
-    def __init__(self, gateway_id, messages):
-        self.request = SimpleNamespace(headers={'Gateway-Id': gateway_id})
+    def __init__(self, gateway_id, messages, group=None, openssl_version=None):
+        headers = {'Gateway-Id': gateway_id}
+        if openssl_version:
+            headers['OpenSSL-Version'] = openssl_version
+        self.request = SimpleNamespace(headers=headers)
         self.remote_address = ('172.18.0.4', 50000)
-        self.transport = SimpleNamespace(get_extra_info={'ssl_object': None}.get)
+        # A plain connection, or TLS that negotiated `group`.
+        ssl_object = group and SimpleNamespace(
+            group=lambda: group, version=lambda: 'TLSv1.3', cipher=lambda: None
+        )
+        self.transport = SimpleNamespace(get_extra_info={'ssl_object': ssl_object}.get)
         self.messages = [json.dumps(message) for message in messages]
         self.sent = []
         self.closed = asyncio.Event()
@@ -87,7 +96,13 @@ async def test_lists_the_readers_a_gateway_reports(db, wait_until):
     await task
 
     assert ws.sent == [{'request_id': 'r1', 'result': 'ok'}]
-    assert gateway['readers'] == [{**READER, 'post_quantum': False}]
+    assert gateway['readers'] == [
+        {
+            **READER,
+            'post_quantum': False,
+            **openssl.details(READER['openssl']),
+        }
+    ]
     assert db.events() == []  # a reader list is no access event
 
 
@@ -192,20 +207,24 @@ async def test_overlapping_reconnects_keep_separate_session_history(db, wait_unt
 
 async def test_keeps_only_the_known_string_fields_of_each_reader(db):
     hub = GatewayHub(db)
-    reported = {'id': 'rd-9', 'address': 7, 'since': None, 'zone': 'x', 'extra': [1]}
+    reported = {
+        'id': 'rd-9',
+        'address': 7,
+        'since': None,
+        'zone': 'x',
+        'extra': [1],
+        'openssl': 'OpenSSL 3.5.7' + ' ' * openssl.MAX_LENGTH,  # too long
+    }
 
     reply = await hub.respond(readers_report([reported]), 'gw-1')
 
     assert reply['result'] == 'ok'
     assert hub._readers['gw-1'] == [  # pylint: disable=protected-access
         {
+            **dict.fromkeys(READER_FIELDS),
             'id': 'rd-9',
-            'address': None,
-            'since': None,
-            'tls_version': None,
-            'cipher': None,
-            'key_exchange': None,
             'post_quantum': None,
+            **openssl.details(None),  # the oversized report is dropped
         }
     ]
 
@@ -231,3 +250,30 @@ async def test_malformed_reader_list_fails_and_changes_nothing(db, readers):
     assert reply == {'request_id': 'r2', 'result': 'fail'}
     assert [r['id'] for r in hub._readers['gw-1']] == ['rd-3']  # pylint: disable=protected-access
     assert db.events() == []
+
+
+@pytest.mark.parametrize(
+    'case',  # (cloud's OpenSSL, gateway's OpenSSL, weakened)
+    [
+        ('OpenSSL 3.5.8', 'OpenSSL 3.5.8', False),
+        ('OpenSSL 3.5.8', 'OpenSSL 3.5.7', True),
+        ('OpenSSL 3.5.7', 'OpenSSL 3.5.8', True),  # the cloud's own end
+        ('OpenSSL 3.5.8', None, True),  # not reported: assumed vulnerable
+    ],
+)
+async def test_lists_whether_each_hybrid_gateway_is_weakened(
+    db, wait_until, monkeypatch, case
+):
+    cloud, gateway, weakened = case
+    monkeypatch.setenv('OPENSSL_VERSION_REPORTED', cloud)
+    hub = GatewayHub(db)
+    ws = GatewayConnection('gw-1', [readers_report([])], 'X25519MLKEM768', gateway)
+    task = asyncio.create_task(hub.handle(ws))
+    await wait_until(lambda: ws.sent)
+
+    [listed] = hub.connected()
+    ws.close()
+    await task
+
+    assert hub.openssl_version == cloud
+    assert listed['weakened'] is weakened

@@ -6,7 +6,7 @@ import subprocess
 import pytest
 
 from cloud import db as cloud_db
-from lib import topology
+from lib import openssl, topology
 from lib.topology import COMPOSE_FILE, ROOT, Topology, compose, servers, write
 from reader import interval
 
@@ -32,6 +32,23 @@ def test_the_last_sites_are_classical():
 
     assert 'KEY_EXCHANGE' not in services['gateway-s2']['environment']
     assert services['gateway-s3']['environment']['KEY_EXCHANGE'] == 'classical'
+
+
+def test_odd_hybrid_sites_report_a_patched_openssl():
+    services = compose(SMALL)['services']
+
+    def reported(name):
+        return services[name]['environment'].get('OPENSSL_VERSION_REPORTED')
+
+    # Site 1: patched. Site 2: the images' own OpenSSL. Site 3: classical.
+    assert (
+        reported('gateway-s1') == reported('reader-s1-10') == topology.PATCHED_OPENSSL
+    )
+    assert reported('gateway-s2') is reported('reader-s2-1') is None
+    assert reported('gateway-s3') is None
+    # The cloud too: a vulnerable one would weaken every hybrid site.
+    assert reported('cloud') == topology.PATCHED_OPENSSL
+    assert openssl.is_vulnerable(topology.PATCHED_OPENSSL) is False
 
 
 def test_zones_repeat_with_a_number_after_a_lap():

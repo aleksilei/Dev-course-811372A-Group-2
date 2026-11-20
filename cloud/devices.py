@@ -6,12 +6,16 @@ database, and the panel request's own connection. A device's status is its weake
 link: a reader's traffic crosses its own reader -> gateway link and its
 gateway's link to the cloud. Anything the cloud can't confirm is never shown
 as encrypted.
+
+Each connected device also has the OpenSSL version it reported and whether
+that is vulnerable (SCRUM-51), kept apart from its status: see lib.openssl.
+`cloud` gives the cloud's own.
 """
 
 from collections import Counter
 
 from cloud.summary import _natural
-from lib import tls
+from lib import openssl, tls
 
 STATUSES = ('post-quantum', 'classical', 'unknown', 'offline')
 
@@ -47,6 +51,7 @@ def devices(
     known_gateway_ids: list[str],
     readers: list[dict],
     panel_connection: object = None,
+    cloud_openssl: str | None = None,
 ) -> dict:
     """Every gateway and reader with the encryption of its links.
 
@@ -54,6 +59,7 @@ def devices(
     known_gateway_ids: gateway IDs in the database
     readers: Database.readers() rows (id, gateway_id, zone_name)
     panel_connection: the SSLSocket of the panel request asking, if any
+    cloud_openssl: the cloud's own OpenSSL version (None: left out)
     """
     online = {gateway['id']: gateway for gateway in connected}
     known = set(known_gateway_ids) | {
@@ -74,6 +80,7 @@ def devices(
         'panel': _link(PANEL_LINK, tls.link_details(panel_connection))
         if panel_connection is not None
         else None,
+        'cloud': None if cloud_openssl is None else openssl.details(cloud_openssl),
     }
 
 
@@ -92,6 +99,7 @@ def _gateway_rows(online: dict[str, dict], known: set[str]) -> list[dict]:
                 'status': _status(gateway_id in known, gateway is not None, links),
                 'address': (gateway or {}).get('address'),
                 'since': (gateway or {}).get('since'),
+                **(openssl.details(gateway['openssl']) if gateway else openssl.UNKNOWN),
                 'links': links,
             }
         )
@@ -141,6 +149,11 @@ def _reader_rows(online: dict[str, dict], readers: list[dict]) -> list[dict]:
                 'status': status,
                 'address': link.get('address'),
                 'since': link.get('since'),
+                **(
+                    openssl.details(link.get('openssl'))
+                    if reader_id in reported
+                    else openssl.UNKNOWN
+                ),
                 'links': links,
             }
         )

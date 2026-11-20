@@ -7,6 +7,7 @@ const panel = loadPanel();
 const byId = panel.get('byId');
 const keyExchangeLabel = panel.get('keyExchangeLabel');
 const connectionLabel = panel.get('connectionLabel');
+const opensslLabel = panel.get('opensslLabel');
 const readerRows = panel.get('readerRows');
 const groupsBy = panel.get('groupsBy');
 const redraw = panel.get('redraw');
@@ -86,6 +87,37 @@ test('connectionLabel: not connected, offline and unknown', () => {
     { text: 'unknown', className: 'unknown' });
 });
 
+test('opensslLabel flags a vulnerable version with its advisory', () => {
+  assert.deepEqual(plain(opensslLabel({
+    openssl: 'OpenSSL 3.5.7 9 Jun 2026', openssl_checked: true, openssl_vulnerable: true,
+    openssl_advisory: 'upgrade',
+  })), { text: 'OpenSSL 3.5.7 9 Jun 2026: vulnerable', className: 'warn', title: 'upgrade' });
+});
+
+test('opensslLabel: unreported and uncheckable versions are assumed vulnerable', () => {
+  const assumed = { openssl_checked: false, openssl_vulnerable: true, openssl_advisory: 'assumed' };
+
+  assert.deepEqual(
+    plain(opensslLabel({ ...assumed, openssl: null })),
+    { text: 'not reported: assumed vulnerable', className: 'warn', title: 'assumed' },
+  );
+  assert.equal(
+    opensslLabel({ ...assumed, openssl: 'LibreSSL 3.8.2' }).text,
+    "LibreSSL 3.8.2: can't check, assumed vulnerable",
+  );
+});
+
+test('opensslLabel: a fixed version, and a device that is not connected', () => {
+  assert.deepEqual(
+    plain(opensslLabel({ openssl: 'OpenSSL 3.5.8', openssl_checked: true, openssl_vulnerable: false })),
+    { text: 'OpenSSL 3.5.8', className: '', title: 'no known vulnerability' },
+  );
+  assert.deepEqual(
+    plain(opensslLabel({ openssl: null, openssl_vulnerable: null })),
+    { text: null, className: '', title: 'not connected' },
+  );
+});
+
 test('readerRows lists the readers only, under their registered gateway', () => {
   const devices = {
     devices: [
@@ -111,6 +143,19 @@ test('readerRows lists the readers only, under their registered gateway', () => 
   assert.deepEqual([rd5.connected, rd5.known], [false, false]);
   assert.deepEqual([rd99.unregistered, rd99.zone_name], [true, null]);
   assert.equal(rows[1].connection_title, 'from 10.10.0.3, key exchange X25519');
+});
+
+test('readerRows carry each reader\'s OpenSSL cell', () => {
+  const devices = {
+    devices: [reader('rd-1', { openssl: 'OpenSSL 3.5.7', openssl_checked: true, openssl_vulnerable: true })],
+  };
+
+  const [row] = plain(readerRows(devices));
+
+  assert.deepEqual(
+    [row.openssl, row.openssl_class, row.openssl_vulnerable],
+    ['OpenSSL 3.5.7: vulnerable', 'warn', true],
+  );
 });
 
 test('groupsBy gives the groups of each member, and none for others', () => {

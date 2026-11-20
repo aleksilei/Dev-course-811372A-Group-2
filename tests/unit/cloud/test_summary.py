@@ -1,10 +1,14 @@
 import pytest
 
 from cloud.summary import summarize
+from lib import openssl
 
 HYBRID = {'key_exchange': 'X25519MLKEM768', 'post_quantum': True}
 CLASSICAL = {'key_exchange': 'X25519', 'post_quantum': False}
 UNKNOWN = {'key_exchange': None, 'post_quantum': None}
+# Hybrid key exchange, but on an OpenSSL whose ML-KEM is vulnerable (SCRUM-51).
+WEAKENED = {**HYBRID, **openssl.details('OpenSSL 3.5.7 9 Jun 2026')}
+PATCHED = {**HYBRID, **openssl.details('OpenSSL 3.5.8')}
 
 READERS = [
     {'id': 'rd-1', 'gateway_id': 'gw-1', 'zone_name': 'front-door'},
@@ -216,3 +220,106 @@ def test_gateways_are_listed_in_natural_order():
     )
 
     assert [g['id'] for g in summary['classical']] == ['gw-s9', 'gw-s10']
+
+
+def test_a_hybrid_gateway_on_vulnerable_openssl_counts_like_a_classical_one():
+    summary = summarize(
+        gateways(**{'gw-1': WEAKENED, 'gw-2': PATCHED, 'gw-3': HYBRID, 'gw-4': HYBRID}),
+        KNOWN,
+        READERS,
+        [],
+    )
+
+    assert summary['status'] == 'amber'
+    assert summary['gateways']['hybrid'] == 3
+    assert summary['gateways']['weakened'] == 1
+    assert summary['gateway_coverage'] == 0.75
+    assert summary['weakened'] == [
+        {
+            'id': 'gw-1',
+            'key_exchange': 'X25519MLKEM768',
+            'readers': 2,
+            'traffic_share': None,
+            'openssl': 'OpenSSL 3.5.7 9 Jun 2026',
+        }
+    ]
+    [risk] = summary['risks']
+    assert risk['severity'] == 'medium'
+    assert risk['title'] == '1 of 4 gateways runs a vulnerable OpenSSL'
+    assert risk['gateways'] == ['gw-1']
+    # Turning off classical fallback would not cut it off: it is hybrid.
+    assert summary['hybrid_only_disconnects'] == {'gateways': 0, 'readers': 0}
+
+
+def test_more_than_half_classical_or_weakened_is_red():
+    summary = summarize(
+        gateways(**{'gw-1': WEAKENED, 'gw-2': CLASSICAL}), ['gw-1', 'gw-2'], READERS, []
+    )
+
+    assert summary['status'] == 'red'
+    assert summary['gateway_coverage'] == 0.0
+    titles = [risk['title'] for risk in summary['risks']]
+    assert titles[:2] == [
+        '1 of 2 gateways uses classical encryption',
+        '1 of 2 gateways runs a vulnerable OpenSSL',
+    ]
+    assert summary['risks'][1]['severity'] == 'high'
+
+
+def test_only_hybrid_gateways_can_be_weakened():
+    # A classical gateway's ML-KEM is never used.
+    summary = summarize(
+        gateways(**{'gw-1': PATCHED, 'gw-2': {**CLASSICAL, **openssl.details(None)}}),
+        ['gw-1', 'gw-2'],
+        READERS,
+        [],
+    )
+
+    assert summary['gateways']['weakened'] == 0
+    assert summary['gateways']['hybrid'] == 1
+    assert summary['status'] == 'amber'
+
+
+def test_a_hybrid_gateway_that_does_not_report_its_openssl_is_weakened():
+    # e.g. a gateway from before SCRUM-51, never restarted onto a patch.
+    summary = summarize(
+        gateways(**{'gw-1': {**HYBRID, **openssl.details(None)}, 'gw-2': PATCHED}),
+        ['gw-1', 'gw-2'],
+        READERS,
+        [],
+    )
+
+    assert [g['id'] for g in summary['weakened']] == ['gw-1']
+    assert summary['weakened'][0]['openssl'] is None
+
+
+def test_a_vulnerable_cloud_weakens_every_hybrid_gateway():
+    summary = summarize(
+        gateways(**{'gw-1': PATCHED, 'gw-2': CLASSICAL}),
+        ['gw-1', 'gw-2'],
+        READERS,
+        [],
+        cloud_openssl='OpenSSL 3.5.7 9 Jun 2026',
+    )
+
+    assert [g['id'] for g in summary['weakened']] == ['gw-1']
+    assert summary['cloud']['openssl_vulnerable'] is True
+    assert summary['status'] == 'red'
+    risk = next(r for r in summary['risks'] if r['gateways'] == ['gw-1'])
+    assert risk['title'] == 'The cloud runs a vulnerable OpenSSL'
+    assert '1 of 2 gateways' in risk['detail']
+    assert 'upgraded to 3.5.8 or newer' in risk['detail']
+
+
+def test_a_patched_cloud_leaves_patched_gateways_protected():
+    summary = summarize(
+        gateways(**{'gw-1': PATCHED, 'gw-2': PATCHED}),
+        ['gw-1', 'gw-2'],
+        READERS,
+        [],
+        cloud_openssl='OpenSSL 3.5.8 (simulated)',
+    )
+
+    assert summary['status'] == 'green'
+    assert summary['gateways']['weakened'] == 0
+    assert summary['cloud']['openssl_vulnerable'] is False

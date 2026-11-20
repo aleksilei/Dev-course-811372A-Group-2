@@ -73,10 +73,37 @@ function keyExchangeLabel(gateway) {
   return kind ? `${gateway.key_exchange} (${kind.label})` : null;
 }
 
-function fillGateways(gateways) {
+// How a device's reported OpenSSL version is shown (SCRUM-51), from the
+// openssl* fields of an /api/gateways or /api/devices row: {text, className,
+// title}. The cloud decides what is vulnerable, including assuming it of a
+// connected device that reports no version it can check; this only words it.
+function opensslLabel(device) {
+  const title = device.openssl_advisory;
+  if (device.openssl_vulnerable === false) {
+    return { text: device.openssl, className: '', title: 'no known vulnerability' };
+  }
+  if (device.openssl_vulnerable !== true) {
+    return { text: null, className: '', title: 'not connected' }; // nothing claimed
+  }
+  if (device.openssl_checked) {
+    return { text: `${device.openssl}: vulnerable`, className: 'warn', title };
+  }
+  const text = device.openssl
+    ? `${device.openssl}: can't check, assumed vulnerable`
+    : 'not reported: assumed vulnerable';
+  return { text, className: 'warn', title };
+}
+
+// Spread into a fillTable row: its openssl cell, styled and with a tooltip.
+function opensslCell(device) {
+  const label = opensslLabel(device);
+  return { openssl: label.text, openssl_class: label.className, openssl_title: label.title };
+}
+
+function fillGateways(gateways, cloud) {
   fillTable($('gateways'), gateways.map((gateway) => (
-    { ...gateway, key_exchange: keyExchangeLabel(gateway) }
-  )), ['id', 'address', 'since', 'key_exchange']);
+    { ...gateway, key_exchange: keyExchangeLabel(gateway), ...opensslCell(gateway) }
+  )), ['id', 'address', 'since', 'key_exchange', 'openssl']);
 
   const classical = gateways.filter((gateway) => gateway.post_quantum === false);
   let summary = '';
@@ -87,14 +114,27 @@ function fillGateways(gateways) {
   } else if (gateways.length > 0 && gateways.every((gateway) => gateway.post_quantum)) {
     summary = 'All connected gateways use post-quantum hybrid key exchange.';
   }
-  $('key-exchange-summary').textContent = summary;
+  const weakened = gateways.filter((gateway) => gateway.weakened);
+  if (weakened.length > 0) {
+    summary += ` ${weakened.length} of ${gateways.length} gateways' post-quantum hybrid key exchange `
+      + 'is no stronger than classical: the OpenSSL at one end of the link is vulnerable.';
+  }
+  $('key-exchange-summary').textContent = summary.trim();
+  // The cloud's own OpenSSL ends every gateway link.
+  const label = cloud ? opensslLabel(cloud) : { text: null, className: '' };
+  $('cloud-openssl').textContent = label.text ? `The cloud's own OpenSSL: ${label.text}` : '';
+  $('cloud-openssl').className = `hint ${label.className}`.trim();
+  $('cloud-openssl').title = label.title ?? '';
 }
 
-function fillSummary({ gateways, gatewayIds, rows, keys }) {
+function fillSummary({ gateways, gatewayIds, rows, keys, cloud }) {
   const classical = gateways.filter((gateway) => gateway.post_quantum === false).length;
   const registered = rows.filter((row) => !row.unregistered);
   const online = registered.filter((row) => row.connected).length;
   const unregistered = rows.length - registered.length;
+  // Connected devices, and the cloud itself.
+  const vulnerable = [...gateways, ...rows, ...(cloud ? [cloud] : [])]
+    .filter((device) => device.openssl_vulnerable === true).length;
   const tiles = [
     ['Gateways connected', `${gateways.length} of ${gatewayIds.length}`,
       gateways.length < gatewayIds.length ? 'warn' : ''],
@@ -102,6 +142,7 @@ function fillSummary({ gateways, gatewayIds, rows, keys }) {
     ['Readers connected', `${online} of ${registered.length}`,
       online < registered.length ? 'warn' : ''],
     ...(unregistered > 0 ? [['Unregistered readers', unregistered, 'warn']] : []),
+    ['Vulnerable OpenSSL', vulnerable, vulnerable > 0 ? 'warn' : 'pass'],
     ['Keys', keys.length, ''],
   ];
   $('summary').replaceChildren(...tiles.map(([label, value, className]) => {
@@ -185,6 +226,8 @@ function readerRows(devices) {
         connection: label.text,
         connection_class: label.className,
         connection_title: label.title,
+        openssl_vulnerable: device.openssl_vulnerable,
+        ...opensslCell(device),
       };
     })
     .sort((a, b) => byId(a.gateway_id ?? '', b.gateway_id ?? '') || byId(a.id, b.id));
@@ -220,8 +263,8 @@ function fillReaders(readers, totalReaders, connected) {
     summary.addEventListener('click', () => openGateways.set(gatewayId, !details.open));
 
     const table = document.createElement('table');
-    table.createTHead().innerHTML = '<tr><th>Reader</th><th>Zone</th><th>Connection</th></tr>';
-    fillTable(table.createTBody(), members, ['id', 'zone_name', 'connection']);
+    table.createTHead().innerHTML = '<tr><th>Reader</th><th>Zone</th><th>Connection</th><th>OpenSSL</th></tr>';
+    fillTable(table.createTBody(), members, ['id', 'zone_name', 'connection', 'openssl']);
     details.append(summary, table);
     return details;
   });
@@ -368,15 +411,16 @@ function draw() {
   const shownRows = shownReaders(rows);
   const shown = shownRows.filter((row) => !row.unregistered);
 
-  redraw('summary', [gateways, gatewayIds, rows, keys], () => fillSummary(
-    { gateways, gatewayIds, rows, keys },
+  const { cloud } = latest.devices;
+  redraw('summary', [gateways, gatewayIds, rows, keys, cloud], () => fillSummary(
+    { gateways, gatewayIds, rows, keys, cloud },
   ));
   redraw('gateway-choice', gatewayIds, () => fillGatewayChoice(gatewayIds));
   $('show-count').textContent = shownRows.length === rows.length
     ? `Showing all ${rows.length} readers`
     : `Showing ${shownRows.length} of ${rows.length} readers`;
-  redraw('gateways', gateways, () => fillGateways(
-    [...gateways].sort((a, b) => byId(a.id, b.id)),
+  redraw('gateways', [gateways, cloud], () => fillGateways(
+    [...gateways].sort((a, b) => byId(a.id, b.id)), cloud,
   ));
   const opened = [...openGateways];
   redraw('readers', [shownRows, opened, $('show-text').value.trim() !== '', gateways], () => (

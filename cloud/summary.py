@@ -3,12 +3,20 @@
 summarize() is a pure function of what the cloud knows right now: the
 connected gateways, the gateways and readers in the database, and the recent
 access traffic. It holds the readiness scores (SCRUM-11) and the status rules.
+
+A gateway that negotiated hybrid key exchange is "weakened" (SCRUM-51) when
+the OpenSSL at either end of its link, its own or the cloud's, has an ML-KEM
+advisory, or can't be confirmed patched (see lib.openssl). Its ML-KEM can't be
+trusted, so it is no stronger than classical. It doesn't count as protected,
+and the status counts it like a classical gateway. Traffic readiness can't
+tell: events record only the key exchange, not the OpenSSL version.
 """
 
 import re
 from collections import Counter
 from datetime import timedelta
 
+from lib import openssl
 from lib.tls import is_post_quantum
 
 # The rolling traffic window used by the migration and security scores.
@@ -22,10 +30,21 @@ def _natural(gateway_id: str) -> list:
     ]
 
 
-def _gateway_groups(online: dict[str, dict], known: list[str]) -> dict[str, list[str]]:
+def _gateway_groups(
+    online: dict[str, dict], known: list[str], cloud: dict | None
+) -> dict[str, list[str]]:
     """Classify connected gateways and identify those known but offline."""
+
+    def weakened(gateway: dict) -> bool:
+        return openssl.weakens_hybrid(gateway, cloud)
+
     return {
-        'hybrid': [g for g in online if online[g].get('post_quantum') is True],
+        'hybrid': [
+            g
+            for g in online
+            if online[g].get('post_quantum') is True and not weakened(online[g])
+        ],
+        'weakened': sorted((g for g in online if weakened(online[g])), key=_natural),
         'classical': sorted(
             (g for g in online if online[g].get('post_quantum') is False), key=_natural
         ),
@@ -50,12 +69,15 @@ def _traffic_summary(events: list[dict]) -> dict:
     }
 
 
-def summarize(
+# A pure function of everything the cloud knows, so it takes all of it.
+def summarize(  # pylint: disable=too-many-arguments,too-many-locals
     connected: list[dict],
     known_ids: list[str],
     readers: list[dict],
     events: list[dict],
+    *,
     traffic_counts: list[dict] | None = None,
+    cloud_openssl: str | None = None,
 ) -> dict:
     """Traffic readiness, gateway coverage, status and risks.
 
@@ -64,7 +86,9 @@ def summarize(
     readers: Database.readers() rows (id, gateway_id, zone_name)
     events: access events (gateway_id, key_exchange), unless traffic_counts is supplied
     traffic_counts: rows (gateway_id, key_exchange, count) within the traffic window
+    cloud_openssl: the cloud's own OpenSSL version (None: left out)
     """
+    cloud = None if cloud_openssl is None else openssl.details(cloud_openssl)
     online = {gateway['id']: gateway for gateway in connected}
     known = sorted(set(known_ids) | set(online), key=_natural)
     readers_at = Counter(reader['gateway_id'] for reader in readers)
@@ -72,7 +96,7 @@ def summarize(
     traffic_at = Counter()
     for event in window_events:
         traffic_at[event['gateway_id']] += event.get('count', 1)
-    groups = _gateway_groups(online, known)
+    groups = _gateway_groups(online, known, cloud)
     traffic = _traffic_summary(window_events)
 
     def detail(gateway_id: str) -> dict:
@@ -91,12 +115,17 @@ def summarize(
             'known': len(known),
             'connected': len(online),
             'hybrid': len(groups['hybrid']),
+            'weakened': len(groups['weakened']),
             'classical': len(groups['classical']),
             'unknown': len(groups['unknown']),
             'offline': len(groups['offline']),
         },
         'readers': len(readers),
         'classical': [detail(g) for g in groups['classical']],
+        'weakened': [
+            {**detail(g), 'openssl': online[g].get('openssl')}
+            for g in groups['weakened']
+        ],
         'unknown': [detail(g) for g in groups['unknown']],
         'offline': [detail(g) for g in groups['offline']],
         'classical_traffic_share': traffic['classical_share'],
@@ -107,6 +136,7 @@ def summarize(
             'readers': sum(readers_at[g] for g in groups['classical']),
         },
         'recent_events': traffic['total'],
+        'cloud': cloud,
     }
     summary['status'] = _status(summary['gateways'])
     summary['risks'] = _risks(summary)
@@ -118,10 +148,12 @@ def _share(part: int, whole: int) -> float | None:
 
 
 def _status(gateways: dict) -> str:
-    """green: every gateway connected and on hybrid; red: a gateway offline or
-    over half of the connected ones classical; amber otherwise."""
+    """green: every gateway connected and on (unweakened) hybrid; red: a gateway
+    offline or over half of the connected ones classical or weakened; amber
+    otherwise."""
     connected = gateways['connected']
-    if gateways['offline'] or (connected and gateways['classical'] / connected > 0.5):
+    exposed = gateways['classical'] + gateways['weakened']
+    if gateways['offline'] or (connected and exposed / connected > 0.5):
         return 'red'
     if connected and gateways['hybrid'] == connected:
         return 'green'
@@ -164,6 +196,9 @@ def _risks(summary: dict) -> list[dict]:
                 'gateways': [g['id'] for g in summary['classical']],
             }
         )
+    if summary['weakened']:
+        risks.append(_weakened_risk(summary))
+    if summary['classical']:
         cut = summary['hybrid_only_disconnects']
         risks.append(
             {
@@ -185,3 +220,33 @@ def _risks(summary: dict) -> list[dict]:
             }
         )
     return risks
+
+
+def _weakened_risk(summary: dict) -> dict:
+    gateways = summary['gateways']
+    fixed = openssl.fixed_in(openssl.ML_KEM)
+    of_connected = (
+        f'{gateways["weakened"]} of {_plural(gateways["connected"], "gateway")}'
+    )
+    if openssl.breaks(summary['cloud'], openssl.ML_KEM):
+        title = 'The cloud runs a vulnerable OpenSSL'
+        detail = (
+            f'The post-quantum encryption of every hybrid gateway ({of_connected}) '
+            "relies on the cloud's ML-KEM, which is vulnerable or can't be confirmed "
+            'patched, so it is no stronger than classical encryption until the '
+            f"cloud's OpenSSL is upgraded to {fixed} or newer."
+        )
+    else:
+        verb = 'runs' if gateways['weakened'] == 1 else 'run'
+        title = f'{of_connected} {verb} a vulnerable OpenSSL'
+        detail = (
+            'Their post-quantum encryption relies on an ML-KEM that is vulnerable '
+            "or can't be confirmed patched, so it is no stronger than classical "
+            f'encryption until OpenSSL is upgraded to {fixed} or newer.'
+        )
+    return {
+        'severity': 'high' if summary['status'] == 'red' else 'medium',
+        'title': title,
+        'detail': detail,
+        'gateways': [g['id'] for g in summary['weakened']],
+    }
