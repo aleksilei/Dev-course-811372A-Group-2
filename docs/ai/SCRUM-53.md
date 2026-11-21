@@ -38,7 +38,8 @@ of them used patched OpenSSL at both ends, the updated score is 70%.
 
 ## 3. Implementation and verification
 
-- `lib/src/lib/openssl.py` sets the shared cutoff for the exercise to 3.5.7.
+- The first implementation changed the shared cutoff in `lib/src/lib/openssl.py`
+  to 3.5.7, following the ticket's original wording.
 - `lib/src/lib/hub.py` and `cloud/gateways.py` capture the TLS group and OpenSSL
   versions for the connection that handled each access request.
 - `cloud/schema.sql` and `cloud/db.py` store both versions and add the new
@@ -51,3 +52,15 @@ of them used patched OpenSSL at both ends, the updated score is 70%.
   `git diff --check` passed during implementation. The test suite was not run.
 - The gateway version comes from its own report, so the score depends on the
   accuracy of that report.
+
+## 4. Review follow-up
+
+The reviewer explained that the Sprint 2 images already used 3.5.7 and that
+the simulated advisory treats that version as affected. The exercise assumes
+the next patch, 3.5.8, is the first safe version so the migration has a
+demonstrable effect.
+
+Codex restored the existing 3.5.8 cutoff and updated the documentation and
+test cases. The score still uses the recorded versions at both ends of each
+hybrid connection. A hybrid event with 3.5.7 at either end now earns zero
+credit. An event with 3.5.8 or newer at both ends earns credit.

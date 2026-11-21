@@ -86,7 +86,7 @@ views are drawn from `GET /api/summary` (`summary.py`), where the readiness
 score and status rules live:
 
 - **PQC traffic readiness:** the share of all access events in the last hour
-  recorded with hybrid key exchange and OpenSSL 3.5.7 or newer at both ends of
+  recorded with hybrid key exchange and OpenSSL 3.5.8 or newer at both ends of
   the gateway-to-cloud connection. Classical links, affected versions and
   missing or unreadable details count against readiness. The score is `null`
   when the window has no events. Each event keeps its negotiated group and

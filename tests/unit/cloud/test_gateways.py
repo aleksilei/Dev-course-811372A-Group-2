@@ -256,10 +256,10 @@ async def test_malformed_reader_list_fails_and_changes_nothing(db, readers):
 @pytest.mark.parametrize(
     'case',  # (cloud's OpenSSL, gateway's OpenSSL, weakened)
     [
-        ('OpenSSL 3.5.7', 'OpenSSL 3.5.7', False),
-        ('OpenSSL 3.5.7', 'OpenSSL 3.5.6', True),
-        ('OpenSSL 3.5.6', 'OpenSSL 3.5.7', True),  # the cloud's own end
-        ('OpenSSL 3.5.7', None, True),  # not reported: assumed vulnerable
+        ('OpenSSL 3.5.8', 'OpenSSL 3.5.8', False),
+        ('OpenSSL 3.5.8', 'OpenSSL 3.5.7', True),
+        ('OpenSSL 3.5.7', 'OpenSSL 3.5.8', True),  # the cloud's own end
+        ('OpenSSL 3.5.8', None, True),  # not reported: assumed vulnerable
     ],
 )
 async def test_lists_whether_each_hybrid_gateway_is_weakened(

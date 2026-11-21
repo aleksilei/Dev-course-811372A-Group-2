@@ -89,9 +89,9 @@ test('connectionLabel: not connected, offline and unknown', () => {
 
 test('opensslLabel flags a vulnerable version with its advisory', () => {
   assert.deepEqual(plain(opensslLabel({
-    openssl: 'OpenSSL 3.5.6', openssl_checked: true, openssl_vulnerable: true,
+    openssl: 'OpenSSL 3.5.7 9 Jun 2026', openssl_checked: true, openssl_vulnerable: true,
     openssl_advisory: 'upgrade',
-  })), { text: 'OpenSSL 3.5.6: vulnerable', className: 'warn', title: 'upgrade' });
+  })), { text: 'OpenSSL 3.5.7 9 Jun 2026: vulnerable', className: 'warn', title: 'upgrade' });
 });
 
 test('opensslLabel: unreported and uncheckable versions are assumed vulnerable', () => {
@@ -147,14 +147,14 @@ test('readerRows lists the readers only, under their registered gateway', () => 
 
 test('readerRows carry each reader\'s OpenSSL cell', () => {
   const devices = {
-    devices: [reader('rd-1', { openssl: 'OpenSSL 3.5.6', openssl_checked: true, openssl_vulnerable: true })],
+    devices: [reader('rd-1', { openssl: 'OpenSSL 3.5.7', openssl_checked: true, openssl_vulnerable: true })],
   };
 
   const [row] = plain(readerRows(devices));
 
   assert.deepEqual(
     [row.openssl, row.openssl_class, row.openssl_vulnerable],
-    ['OpenSSL 3.5.6: vulnerable', 'warn', true],
+    ['OpenSSL 3.5.7: vulnerable', 'warn', true],
   );
 });
 

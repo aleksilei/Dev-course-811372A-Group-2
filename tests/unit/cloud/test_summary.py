@@ -7,9 +7,11 @@ HYBRID = {'key_exchange': 'X25519MLKEM768', 'post_quantum': True}
 CLASSICAL = {'key_exchange': 'X25519', 'post_quantum': False}
 UNKNOWN = {'key_exchange': None, 'post_quantum': None}
 # Hybrid key exchange, but on an OpenSSL whose ML-KEM is vulnerable (SCRUM-51).
-WEAKENED = {**HYBRID, **openssl.details('OpenSSL 3.5.6')}
-PATCHED = {**HYBRID, **openssl.details('OpenSSL 3.5.7')}
-PATCHED_LINK = {'gateway_openssl': 'OpenSSL 3.5.7', 'cloud_openssl': 'OpenSSL 3.5.7'}
+AFFECTED_VERSION = 'OpenSSL 3.5.7 9 Jun 2026'
+PATCHED_VERSION = 'OpenSSL 3.5.8'
+WEAKENED = {**HYBRID, **openssl.details(AFFECTED_VERSION)}
+PATCHED = {**HYBRID, **openssl.details(PATCHED_VERSION)}
+PATCHED_LINK = {'gateway_openssl': PATCHED_VERSION, 'cloud_openssl': PATCHED_VERSION}
 
 READERS = [
     {'id': 'rd-1', 'gateway_id': 'gw-1', 'zone_name': 'front-door'},
@@ -188,17 +190,17 @@ def test_readiness_uses_event_encryption_across_upgrades_and_disconnects():
             'gateway_id': 'gw-1',
             **HYBRID,
             **PATCHED_LINK,
-            'gateway_openssl': 'OpenSSL 3.5.6',
+            'gateway_openssl': AFFECTED_VERSION,
             'count': 1,
         },
         {
             'gateway_id': 'gw-1',
             **HYBRID,
             **PATCHED_LINK,
-            'cloud_openssl': 'OpenSSL 3.5.6',
+            'cloud_openssl': AFFECTED_VERSION,
             'count': 1,
         },
-        {'gateway_id': 'gw-1', **HYBRID, 'cloud_openssl': 'OpenSSL 3.5.7', 'count': 1},
+        {'gateway_id': 'gw-1', **HYBRID, 'cloud_openssl': PATCHED_VERSION, 'count': 1},
     ]
     for connected in (
         gateways(**{'gw-1': PATCHED}),
@@ -257,7 +259,7 @@ def test_a_hybrid_gateway_on_vulnerable_openssl_counts_like_a_classical_one():
             'key_exchange': 'X25519MLKEM768',
             'readers': 2,
             'traffic_share': None,
-            'openssl': 'OpenSSL 3.5.6',
+            'openssl': AFFECTED_VERSION,
         }
     ]
     [risk] = summary['risks']
@@ -316,7 +318,7 @@ def test_a_vulnerable_cloud_weakens_every_hybrid_gateway():
         ['gw-1', 'gw-2'],
         READERS,
         [],
-        cloud_openssl='OpenSSL 3.5.6',
+        cloud_openssl=AFFECTED_VERSION,
     )
 
     assert [g['id'] for g in summary['weakened']] == ['gw-1']
@@ -325,7 +327,7 @@ def test_a_vulnerable_cloud_weakens_every_hybrid_gateway():
     risk = next(r for r in summary['risks'] if r['gateways'] == ['gw-1'])
     assert risk['title'] == 'The cloud runs a vulnerable OpenSSL'
     assert '1 of 2 gateways' in risk['detail']
-    assert 'upgraded to 3.5.7 or newer' in risk['detail']
+    assert 'upgraded to 3.5.8 or newer' in risk['detail']
 
 
 def test_a_patched_cloud_leaves_patched_gateways_protected():

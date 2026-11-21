@@ -96,8 +96,8 @@ async def test_gateway_logs_each_connections_tls_during_overlapping_reconnect(
 
     hub = GatewayHub(db)
     hub.openssl_version = 'OpenSSL 3.5.9'
-    old_headers = {'Gateway-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.6'}
-    new_headers = {'Gateway-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.7'}
+    old_headers = {'Gateway-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.7'}
+    new_headers = {'Gateway-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.8'}
     messages = ['{"id": "key-alice", "reader_id": "rd-1"}']
     old = asyncio.create_task(
         hub.handle(DelayedConnection(old_headers, messages, 'X25519MLKEM768'))
@@ -111,8 +111,8 @@ async def test_gateway_logs_each_connections_tls_during_overlapping_reconnect(
     assert {
         (row['key_exchange'], row['gateway_openssl']): row['count'] for row in counts
     } == {
-        ('X25519MLKEM768', 'OpenSSL 3.5.6'): 1,
         ('X25519MLKEM768', 'OpenSSL 3.5.7'): 1,
+        ('X25519MLKEM768', 'OpenSSL 3.5.8'): 1,
     }
     assert {row['cloud_openssl'] for row in counts} == {'OpenSSL 3.5.9'}
     assert hub.request_link() == {}
@@ -167,12 +167,12 @@ async def test_lists_the_key_exchange_of_each_client():
 
 async def test_lists_the_openssl_version_each_client_reports():
     hub = EchoHub()
-    headers = {'Test-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.6'}
+    headers = {'Test-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.7 9 Jun 2026'}
 
     await hub.handle(FakeConnection(headers, ['{}']))
 
     [listed] = hub.connected_during_request[0]
-    assert listed['openssl'] == 'OpenSSL 3.5.6'
+    assert listed['openssl'] == 'OpenSSL 3.5.7 9 Jun 2026'
     assert listed['openssl_vulnerable'] is True
     assert listed['openssl_advisory']
 

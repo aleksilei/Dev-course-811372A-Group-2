@@ -201,9 +201,9 @@ async def test_readers_fail_closed_when_the_cloud_goes_down(running_system, wait
 @pytest.mark.parametrize(
     'case',  # (key exchange mode, reported OpenSSL, expected readiness)
     [
-        ('hybrid', 'OpenSSL 3.5.7', 1.0),
-        ('hybrid', 'OpenSSL 3.5.6', 0.0),
-        ('classical', 'OpenSSL 3.5.7', 0.0),
+        ('hybrid', 'OpenSSL 3.5.8', 1.0),
+        ('hybrid', 'OpenSSL 3.5.7', 0.0),
+        ('classical', 'OpenSSL 3.5.8', 0.0),
     ],
 )
 async def test_readiness_uses_recorded_tls_after_gateway_disconnects(
