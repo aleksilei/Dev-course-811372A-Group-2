@@ -43,13 +43,13 @@ make run
   only), with `reader-5` behind it. The cloud falls back to `X25519` for it;
   uncomment the `KEY_EXCHANGE: hybrid-only` line in `docker-compose.yml` to see it
   refused (and `reader-5` failing closed).
-- Every device and the cloud report their OpenSSL version. The images run
-  Debian's 3.5.7, which is affected by the simulated ML-KEM vulnerability
-  (SCRUM-45), so the panel flags all of them, and a hybrid gateway counts as
-  classical in the stakeholder views. See [lib](lib/README.md#openssl-versions-libopenssl).
+- Every device and the cloud report their OpenSSL version. The panel uses
+  3.5.7 as the patch threshold for the simulated ML-KEM advisory. The PQC
+  migration score counts hybrid traffic only when both ends of the
+  gateway-to-cloud link meet that threshold. See [lib](lib/README.md#openssl-versions-libopenssl).
 - Migrate: `make migrate` moves the cloud and both gateways to the
-  `-openssl<version>` images, which have the fix, and the panel shows `gw-1`
-  as hybrid again (the readers stay flagged). `make run` moves them back. See
+  `-openssl<version>` images, which meet the patch threshold. `make run` moves
+  them back to the base images. See
   [OpenSSL image variants](#openssl-image-variants).
 - Stop: `make stop`
 
@@ -58,12 +58,11 @@ All state lives in `data/` (gitignored): `data/certs/` and the SQLite database
 
 ### OpenSSL image variants
 
-Until `python:3.15-slim` (Debian trixie) ships OpenSSL 3.5.8 or newer, the
-cloud and gateway images come in two variants from one Dockerfile (SCRUM-55):
+The cloud and gateway images come in two variants from one Dockerfile (SCRUM-55):
 
 | Image | OpenSSL |
 |---|---|
-| `dev-course/cloud`, `dev-course/gateway` | the base image's (3.5.7, affected) |
+| `dev-course/cloud`, `dev-course/gateway` | the version shipped by `python:3.15-slim` |
 | `dev-course/cloud:openssl3.5.9`, `dev-course/gateway:openssl3.5.9` | the version `openssl/openssl.env` pins, built from source and loaded ahead of Debian's `libssl` |
 
 - `make build` builds both. `make migrate` moves the cloud and every gateway

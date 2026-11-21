@@ -28,16 +28,16 @@ def test_parses_openssl_version_strings(version, expected):
 @pytest.mark.parametrize(
     ('version', 'vulnerable'),
     [
-        ('OpenSSL 3.5.7 9 Jun 2026', True),  # what the images run
+        ('OpenSSL 3.5.6', True),
         ('OpenSSL 3.5.0 8 Apr 2025', True),
         ('OpenSSL 3.0.13 30 Jan 2024', True),
         ('OpenSSL 1.1.1w  11 Sep 2023', True),
-        ('OpenSSL 3.5.8', False),  # the first fixed version
+        ('OpenSSL 3.5.7 9 Jun 2026', False),  # the first fixed version
         ('OpenSSL 3.6.0 1 Oct 2025', False),
         ('OpenSSL 4.1.0 23 Oct 2026', False),
     ],
 )
-def test_everything_before_3_5_8_has_the_ml_kem_advisory(version, vulnerable):
+def test_everything_before_3_5_7_has_the_ml_kem_advisory(version, vulnerable):
     assert openssl.is_vulnerable(version) is vulnerable
     details = openssl.details(version)
     assert details['openssl_checked'] is True
@@ -47,17 +47,17 @@ def test_everything_before_3_5_8_has_the_ml_kem_advisory(version, vulnerable):
 
 
 def test_details_name_the_advisory_and_its_fix():
-    details = openssl.details('OpenSSL 3.5.7 9 Jun 2026')
+    details = openssl.details('OpenSSL 3.5.6')
 
     assert details == {
-        'openssl': 'OpenSSL 3.5.7 9 Jun 2026',
+        'openssl': 'OpenSSL 3.5.6',
         'openssl_checked': True,
         'openssl_vulnerable': True,
         'openssl_affects': [openssl.ML_KEM],
         'openssl_advisory': 'ML-KEM vulnerability (SCRUM-45): hybrid key exchange is '
-        'no stronger than classical. Upgrade to OpenSSL 3.5.8 or newer.',
+        'no stronger than classical. Upgrade to OpenSSL 3.5.7 or newer.',
     }
-    assert openssl.fixed_in(openssl.ML_KEM) == '3.5.8'
+    assert openssl.fixed_in(openssl.ML_KEM) == '3.5.7'
 
 
 @pytest.mark.parametrize('version', [None, 'LibreSSL 3.8.2', 'patched'])
@@ -110,8 +110,8 @@ def test_the_pinned_openssl_of_the_image_variants_has_the_fix():
     assert re.fullmatch('[0-9a-f]{64}', pinned['OPENSSL_SHA256'])
 
 
-PATCHED = openssl.details('OpenSSL 3.5.8')
-VULNERABLE = openssl.details('OpenSSL 3.5.7 9 Jun 2026')
+PATCHED = openssl.details('OpenSSL 3.5.7')
+VULNERABLE = openssl.details('OpenSSL 3.5.6')
 
 
 @pytest.mark.parametrize(

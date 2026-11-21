@@ -77,12 +77,15 @@ class GatewayHub(Hub):
         result = 'fail'
         if isinstance(key_uuid, str) and isinstance(reader_id, str):
             # In a thread: SQLite may wait for a lock (e.g. held by sqlite-web).
+            link = self.request_link()
             result = await asyncio.to_thread(
                 self.db.authorize,
                 key_uuid,
                 reader_id,
                 client_id,
-                self.request_key_exchange(),
+                link.get('key_exchange'),
+                gateway_openssl=link.get('openssl'),
+                cloud_openssl=self.openssl_version,
             )
         return {'request_id': request.get('request_id'), 'result': result}
 

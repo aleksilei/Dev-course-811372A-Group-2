@@ -18,11 +18,12 @@ LIMIT 1
 
 LOG_EVENT = """
 INSERT INTO ACCESS_EVENTS
-    (timestamp, key_uuid, reader_id, zone_name, gateway_id, result, key_exchange)
+    (timestamp, key_uuid, reader_id, zone_name, gateway_id, result,
+     key_exchange, gateway_openssl, cloud_openssl)
 VALUES (
     :timestamp, :key_uuid, :reader_id,
     (SELECT zone_name FROM READERS WHERE id = :reader_id),
-    :gateway_id, :result, :key_exchange
+    :gateway_id, :result, :key_exchange, :gateway_openssl, :cloud_openssl
 )
 """
 
@@ -45,10 +46,10 @@ LIMIT :limit
 """
 
 EVENT_COUNTS_SINCE = """
-SELECT gateway_id, key_exchange, COUNT(*) AS count
+SELECT gateway_id, key_exchange, gateway_openssl, cloud_openssl, COUNT(*) AS count
 FROM ACCESS_EVENTS
 WHERE timestamp >= :since AND timestamp <= :until
-GROUP BY gateway_id, key_exchange
+GROUP BY gateway_id, key_exchange, gateway_openssl, cloud_openssl
 """
 
 # Keys exist only through their groups, so also list keys seen at a reader:
@@ -79,17 +80,21 @@ class Database:
             columns = {
                 row['name'] for row in conn.execute('PRAGMA table_info(ACCESS_EVENTS)')
             }
-            if 'key_exchange' not in columns:
-                conn.execute('ALTER TABLE ACCESS_EVENTS ADD COLUMN key_exchange TEXT')
+            for column in ('key_exchange', 'gateway_openssl', 'cloud_openssl'):
+                if column not in columns:
+                    conn.execute(f'ALTER TABLE ACCESS_EVENTS ADD COLUMN {column} TEXT')
             if is_new:
                 conn.executescript(SEED.read_text(encoding='utf-8'))
 
-    def authorize(
+    def authorize(  # pylint: disable=too-many-arguments
         self,
         key_uuid: str,
         reader_id: str,
         gateway_id: str,
         key_exchange: str | None = None,
+        *,
+        gateway_openssl: str | None = None,
+        cloud_openssl: str | None = None,
     ) -> str:
         """Return 'pass' or 'fail' and record the attempt as an access event."""
         with self._connect() as conn:
@@ -103,6 +108,8 @@ class Database:
                     'gateway_id': gateway_id,
                     'result': result,
                     'key_exchange': key_exchange,
+                    'gateway_openssl': gateway_openssl,
+                    'cloud_openssl': cloud_openssl,
                 },
             )
         return result
@@ -172,7 +179,7 @@ class Database:
         return rows
 
     def event_counts_since(self, since: str, until: str) -> list[dict]:
-        """Count events by gateway and recorded key exchange within UTC ISO bounds."""
+        """Count events by gateway and recorded TLS details within UTC ISO bounds."""
         with self._connect() as conn:
             return [
                 dict(row)

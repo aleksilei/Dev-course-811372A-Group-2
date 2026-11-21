@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS ACCESS_EVENTS (
     zone_name TEXT,
     gateway_id TEXT NOT NULL,
     result TEXT NOT NULL CHECK (result IN ('pass', 'fail')),
-    key_exchange TEXT
+    key_exchange TEXT,
+    gateway_openssl TEXT,
+    cloud_openssl TEXT
 );
 
 CREATE TABLE IF NOT EXISTS GATEWAY_CONNECTIONS (

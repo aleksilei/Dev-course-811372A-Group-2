@@ -45,7 +45,7 @@ class Advisory:
 
 
 # Add a row for every new advisory. The ML-KEM vulnerability is the course's
-# simulated event (SCRUM-45): we play along that OpenSSL before 3.5.8 is
+# simulated event (SCRUM-45): we play along that OpenSSL before 3.5.7 is
 # affected.
 ADVISORIES = [
     Advisory(
@@ -53,7 +53,7 @@ ADVISORIES = [
         affects=ML_KEM,
         impact='hybrid key exchange is no stronger than classical',
         first=(0, 0, 0),
-        fixed=(3, 5, 8),
+        fixed=(3, 5, 7),
     ),
 ]
 
@@ -76,7 +76,7 @@ def format_version(version: Version) -> str:
 
 
 def fixed_in(affects: str) -> str:
-    """The first version fixing every advisory that breaks `affects`, e.g. '3.5.8'."""
+    """The first version fixing every advisory that breaks `affects`."""
     return format_version(max(a.fixed for a in ADVISORIES if a.affects == affects))
 
 

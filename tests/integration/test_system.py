@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import json
+import ssl
 import threading
 import urllib.request
 from types import SimpleNamespace
@@ -197,11 +198,20 @@ async def test_readers_fail_closed_when_the_cloud_goes_down(running_system, wait
         await reader.close()
 
 
-@pytest.mark.parametrize(('mode', 'expected'), [('hybrid', 1.0), ('classical', 0.0)])
+@pytest.mark.parametrize(
+    'case',  # (key exchange mode, reported OpenSSL, expected readiness)
+    [
+        ('hybrid', 'OpenSSL 3.5.7', 1.0),
+        ('hybrid', 'OpenSSL 3.5.6', 0.0),
+        ('classical', 'OpenSSL 3.5.7', 0.0),
+    ],
+)
 async def test_readiness_uses_recorded_tls_after_gateway_disconnects(
-    running_system, wait_until, monkeypatch, mode, expected
+    running_system, wait_until, monkeypatch, case
 ):
+    mode, version, expected = case
     monkeypatch.setenv('KEY_EXCHANGE', mode)
+    monkeypatch.setattr(ssl, 'OPENSSL_VERSION', version)
     async with running_system() as system:
         reader = system.reader('rd-1')
         assert await reader.authorize('key-alice') is True

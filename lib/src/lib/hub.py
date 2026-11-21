@@ -44,13 +44,13 @@ class Hub:
         # client ID -> (connection, connected since, tls.link_details() and
         # the client's reported OpenSSL version)
         self._clients: dict[str, tuple[ServerConnection, str, dict]] = {}
-        self._request_group: ContextVar[str | None] = ContextVar(
-            'request_group', default=None
+        self._request_link: ContextVar[dict | None] = ContextVar(
+            'request_link', default=None
         )
 
-    def request_key_exchange(self) -> str | None:
-        """Key exchange of the connection handling this request, even during reconnects."""
-        return self._request_group.get()
+    def request_link(self) -> dict:
+        """Details of the connection handling this request, even during reconnects."""
+        return self._request_link.get() or {}
 
     def connected(self) -> list[dict]:
         with self._lock:
@@ -76,7 +76,6 @@ class Hub:
             'openssl': openssl.reported(ws.request.headers.get(openssl.OPENSSL_HEADER)),
         }
         group = link['key_exchange']
-        token = self._request_group.set(group)
         address = ws.remote_address[0]
         session = await self.client_connected(client_id, address, since, group)
         with self._lock:
@@ -88,13 +87,14 @@ class Hub:
             ws.remote_address[0],
             group,
         )
+        token = self._request_link.set(link)
         try:
             async for message in ws:
                 await ws.send(json.dumps(await self._reply(message, client_id)))
         except ConnectionClosed:
             pass
         finally:
-            self._request_group.reset(token)
+            self._request_link.reset(token)
             with self._lock:
                 removed = self._clients.get(client_id, (None,))[0] is ws
                 if removed:

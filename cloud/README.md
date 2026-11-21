@@ -85,13 +85,14 @@ the stakeholders disagree, such as when to turn off classical fallback). The
 views are drawn from `GET /api/summary` (`summary.py`), where the readiness
 score and status rules live:
 
-- **PQC traffic readiness:** the share of access events in the last hour recorded
-  with post-quantum hybrid key exchange on the gateway-to-cloud connection.
-  Unknown key exchange (including older events without a recorded group) counts as non-PQC;
-  no events in the window means the score is unavailable (`null`).
-  Each event keeps its connection's negotiated group, so reconnecting, upgrading
-  or disconnecting a gateway does not change the classification of earlier traffic.
-  Existing databases are upgraded automatically without deleting access history.
+- **PQC traffic readiness:** the share of all access events in the last hour
+  recorded with hybrid key exchange and OpenSSL 3.5.7 or newer at both ends of
+  the gateway-to-cloud connection. Classical links, affected versions and
+  missing or unreadable details count against readiness. The score is `null`
+  when the window has no events. Each event keeps its negotiated group and
+  both OpenSSL versions, so reconnecting, upgrading or disconnecting a gateway
+  does not change how its earlier traffic counts. Existing databases gain the
+  new columns automatically and keep their access history.
 - **Gateway coverage:** the share of connected gateways confirmed to use
   post-quantum hybrid key exchange (offline gateways are not counted).
 - **Status:** green when every known gateway is connected and on hybrid; red
@@ -106,8 +107,6 @@ score and status rules live:
   classical gateway for the status, and is a top risk ("The cloud runs a
   vulnerable OpenSSL" when the cloud's end is the cause) and a migration
   blocker. Switching to `KEY_EXCHANGE=hybrid-only` would not cut it off.
-  Traffic readiness can't tell, because access events record only the key
-  exchange.
 - Traffic scores use access events from the rolling last hour. The security
   officer view shows the non-PQC share alongside the per-gateway breakdown.
 

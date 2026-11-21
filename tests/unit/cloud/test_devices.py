@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from cloud.devices import STATUSES, devices
 
 TLS13 = {'tls_version': 'TLSv1.3', 'cipher': 'TLS_AES_256_GCM_SHA384'}
-VULNERABLE = 'OpenSSL 3.5.7 9 Jun 2026'
+VULNERABLE = 'OpenSSL 3.5.6'
 READERS = [
     {'id': 'rd-1', 'gateway_id': 'gw-1', 'zone_name': 'front-door'},
     {'id': 'rd-2', 'gateway_id': 'gw-1', 'zone_name': 'employee-door'},
@@ -240,8 +240,8 @@ def test_a_connected_device_without_a_reported_version_is_assumed_vulnerable():
 
 def test_the_cloud_reports_its_own_openssl():
     assert devices([], [], [])['cloud'] is None
-    cloud = devices([], [], [], cloud_openssl='OpenSSL 3.5.7 9 Jun 2026')['cloud']
+    cloud = devices([], [], [], cloud_openssl=VULNERABLE)['cloud']
     assert (cloud['openssl'], cloud['openssl_vulnerable']) == (
-        'OpenSSL 3.5.7 9 Jun 2026',
+        VULNERABLE,
         True,
     )
