@@ -55,12 +55,6 @@ of them used patched OpenSSL at both ends, the updated score is 70%.
 
 ## 4. Review follow-up
 
-The reviewer explained that the Sprint 2 images already used 3.5.7 and that
-the simulated advisory treats that version as affected. The exercise assumes
-the next patch, 3.5.8, is the first safe version so the migration has a
-demonstrable effect.
-
-Codex restored the existing 3.5.8 cutoff and updated the documentation and
-test cases. The score still uses the recorded versions at both ends of each
-hybrid connection. A hybrid event with 3.5.7 at either end now earns zero
-credit. An event with 3.5.8 or newer at both ends earns credit.
+The developer asked Codex to update PR #21 so OpenSSL 3.5.7 remains affected
+and 3.5.8 is the first patched version. The readiness score should still
+credit only hybrid traffic with patched OpenSSL at both ends.
