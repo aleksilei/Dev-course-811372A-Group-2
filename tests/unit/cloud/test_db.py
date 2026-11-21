@@ -158,7 +158,15 @@ def test_event_counts_since_counts_accesses_per_gateway(db):
 
     assert db.event_counts_since(
         '2026-01-01T11:00:00+00:00', '2026-01-01T11:30:00+00:00'
-    ) == [{'gateway_id': 'gw-1', 'key_exchange': None, 'count': 2}]
+    ) == [
+        {
+            'gateway_id': 'gw-1',
+            'key_exchange': None,
+            'count': 2,
+            'gateway_openssl': None,
+            'cloud_openssl': None,
+        }
+    ]
 
 
 def test_traffic_counts_preserve_encryption_for_each_gateway(db):
@@ -193,17 +201,36 @@ def test_traffic_window_has_no_500_event_limit(db):
         )
     assert db.event_counts_since(
         '2026-01-01T11:00:00+00:00', '2026-01-01T12:00:00+00:00'
-    ) == [{'gateway_id': 'gw-1', 'key_exchange': 'X25519MLKEM768', 'count': 600}]
+    ) == [
+        {
+            'gateway_id': 'gw-1',
+            'key_exchange': 'X25519MLKEM768',
+            'count': 600,
+            'gateway_openssl': None,
+            'cloud_openssl': None,
+        }
+    ]
 
 
-def test_existing_database_is_migrated_without_reclassifying_old_events(db):
-    db.authorize('key-alice', 'rd-1', 'gw-1')
+@pytest.mark.parametrize('has_group', [True, False])
+def test_existing_database_is_migrated_without_reclassifying_old_events(db, has_group):
+    group = 'X25519MLKEM768'
+    db.authorize('key-alice', 'rd-1', 'gw-1', group)
     with sqlite3.connect(db.path) as conn:
-        conn.execute('ALTER TABLE ACCESS_EVENTS DROP COLUMN key_exchange')
+        conn.execute('ALTER TABLE ACCESS_EVENTS DROP COLUMN gateway_openssl')
+        conn.execute('ALTER TABLE ACCESS_EVENTS DROP COLUMN cloud_openssl')
+        if not has_group:
+            conn.execute('ALTER TABLE ACCESS_EVENTS DROP COLUMN key_exchange')
     db.init()
     db.init()  # The migration is safe to run again.
     assert db.event_counts_since('2000-01-01', '2100-01-01') == [
-        {'gateway_id': 'gw-1', 'key_exchange': None, 'count': 1},
+        {
+            'gateway_id': 'gw-1',
+            'key_exchange': group if has_group else None,
+            'gateway_openssl': None,
+            'cloud_openssl': None,
+            'count': 1,
+        },
     ]
     db.authorize('key-alice', 'rd-1', 'gw-1', 'X25519MLKEM768')
     assert len(db.events()) == 2

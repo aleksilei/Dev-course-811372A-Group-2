@@ -83,7 +83,9 @@ class HangingUpConnection(FakeConnection):
         raise ConnectionClosedError(None, None)
 
 
-async def test_gateway_logs_each_connections_group_during_overlapping_reconnect(db):
+async def test_gateway_logs_each_connections_tls_during_overlapping_reconnect(
+    db, wait_until
+):
     release = asyncio.Event()
 
     class DelayedConnection(FakeConnection):
@@ -93,22 +95,27 @@ async def test_gateway_logs_each_connections_group_during_overlapping_reconnect(
                 yield message
 
     hub = GatewayHub(db)
-    headers = {'Gateway-Id': 'gw-1'}
+    hub.openssl_version = 'OpenSSL 3.5.9'
+    old_headers = {'Gateway-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.7'}
+    new_headers = {'Gateway-Id': 'gw-1', 'OpenSSL-Version': 'OpenSSL 3.5.8'}
     messages = ['{"id": "key-alice", "reader_id": "rd-1"}']
     old = asyncio.create_task(
-        hub.handle(DelayedConnection(headers, messages, 'X25519'))
+        hub.handle(DelayedConnection(old_headers, messages, 'X25519MLKEM768'))
     )
-    await asyncio.sleep(0)
-    await hub.handle(FakeConnection(headers, messages, 'X25519MLKEM768'))
+    await wait_until(hub.connected)
+    await hub.handle(FakeConnection(new_headers, messages, 'X25519MLKEM768'))
     release.set()
     await old
 
     counts = db.event_counts_since('2000-01-01', '2100-01-01')
-    assert {row['key_exchange']: row['count'] for row in counts} == {
-        'X25519': 1,
-        'X25519MLKEM768': 1,
+    assert {
+        (row['key_exchange'], row['gateway_openssl']): row['count'] for row in counts
+    } == {
+        ('X25519MLKEM768', 'OpenSSL 3.5.7'): 1,
+        ('X25519MLKEM768', 'OpenSSL 3.5.8'): 1,
     }
-    assert hub.request_key_exchange() is None
+    assert {row['cloud_openssl'] for row in counts} == {'OpenSSL 3.5.9'}
+    assert hub.request_link() == {}
 
 
 async def test_answers_every_request_with_respond():

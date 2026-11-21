@@ -7,8 +7,11 @@ HYBRID = {'key_exchange': 'X25519MLKEM768', 'post_quantum': True}
 CLASSICAL = {'key_exchange': 'X25519', 'post_quantum': False}
 UNKNOWN = {'key_exchange': None, 'post_quantum': None}
 # Hybrid key exchange, but on an OpenSSL whose ML-KEM is vulnerable (SCRUM-51).
-WEAKENED = {**HYBRID, **openssl.details('OpenSSL 3.5.7 9 Jun 2026')}
-PATCHED = {**HYBRID, **openssl.details('OpenSSL 3.5.8')}
+AFFECTED_VERSION = 'OpenSSL 3.5.7 9 Jun 2026'
+PATCHED_VERSION = 'OpenSSL 3.5.8'
+WEAKENED = {**HYBRID, **openssl.details(AFFECTED_VERSION)}
+PATCHED = {**HYBRID, **openssl.details(PATCHED_VERSION)}
+PATCHED_LINK = {'gateway_openssl': PATCHED_VERSION, 'cloud_openssl': PATCHED_VERSION}
 
 READERS = [
     {'id': 'rd-1', 'gateway_id': 'gw-1', 'zone_name': 'front-door'},
@@ -27,6 +30,7 @@ def gateways(**kinds):
 def events(*gateway_ids):
     return [
         {
+            **PATCHED_LINK,
             'gateway_id': gateway_id,
             'key_exchange': 'X25519' if gateway_id == 'gw-2' else 'X25519MLKEM768',
         }
@@ -146,7 +150,7 @@ def test_traffic_readiness_weights_gateways_by_access_volume():
         READERS,
         [],
         traffic_counts=[
-            {'gateway_id': 'gw-1', 'key_exchange': 'X25519MLKEM768', 'count': 9},
+            {'gateway_id': 'gw-1', **HYBRID, **PATCHED_LINK, 'count': 9},
             {'gateway_id': 'gw-2', 'key_exchange': 'X25519', 'count': 1},
         ],
     )
@@ -165,7 +169,7 @@ def test_unknown_and_offline_traffic_counts_as_non_pqc():
         READERS,
         [],
         traffic_counts=[
-            {'gateway_id': 'gw-1', 'key_exchange': 'X25519MLKEM768', 'count': 2},
+            {'gateway_id': 'gw-1', **HYBRID, **PATCHED_LINK, 'count': 2},
             {'gateway_id': 'gw-2', 'key_exchange': None, 'count': 2},
             {'gateway_id': 'gw-3', 'key_exchange': None, 'count': 2},
         ],
@@ -180,24 +184,39 @@ def test_unknown_and_offline_traffic_counts_as_non_pqc():
 def test_readiness_uses_event_encryption_across_upgrades_and_disconnects():
     traffic = [
         {'gateway_id': 'gw-1', 'key_exchange': 'X25519', 'count': 3},
-        {'gateway_id': 'gw-1', 'key_exchange': 'X25519MLKEM768', 'count': 1},
-        {'gateway_id': 'gw-2', 'key_exchange': 'X25519MLKEM768', 'count': 4},
-        {'gateway_id': 'gw-1', 'key_exchange': None, 'count': 2},
+        {'gateway_id': 'gw-1', **HYBRID, **PATCHED_LINK, 'count': 4},
+        {'gateway_id': 'gw-2', **HYBRID, **PATCHED_LINK, 'count': 2},
+        {
+            'gateway_id': 'gw-1',
+            **HYBRID,
+            **PATCHED_LINK,
+            'gateway_openssl': AFFECTED_VERSION,
+            'count': 1,
+        },
+        {
+            'gateway_id': 'gw-1',
+            **HYBRID,
+            **PATCHED_LINK,
+            'cloud_openssl': AFFECTED_VERSION,
+            'count': 1,
+        },
+        {'gateway_id': 'gw-1', **HYBRID, 'cloud_openssl': PATCHED_VERSION, 'count': 1},
     ]
     for connected in (
-        gateways(**{'gw-1': HYBRID}),
+        gateways(**{'gw-1': PATCHED}),
         [],
         gateways(**{'gw-1': CLASSICAL}),
     ):
         summary = summarize(connected, ['gw-1', 'gw-2'], [], [], traffic_counts=traffic)
         assert summary['readiness'] == 0.5
         assert summary['non_pqc_traffic_share'] == 0.5
-        assert summary['classical_traffic_share'] == 0.3
+        assert summary['classical_traffic_share'] == 0.25
 
 
-def test_legacy_events_remain_unknown_even_when_gateway_is_hybrid():
+@pytest.mark.parametrize('record', [{}, HYBRID])
+def test_legacy_events_remain_unknown_even_when_gateway_is_hybrid(record):
     summary = summarize(
-        gateways(**{'gw-1': HYBRID}), ['gw-1'], [], [{'gateway_id': 'gw-1'}]
+        gateways(**{'gw-1': PATCHED}), ['gw-1'], [], [{'gateway_id': 'gw-1', **record}]
     )
     assert summary['readiness'] == 0
     assert summary['non_pqc_traffic_share'] == 1
@@ -240,7 +259,7 @@ def test_a_hybrid_gateway_on_vulnerable_openssl_counts_like_a_classical_one():
             'key_exchange': 'X25519MLKEM768',
             'readers': 2,
             'traffic_share': None,
-            'openssl': 'OpenSSL 3.5.7 9 Jun 2026',
+            'openssl': AFFECTED_VERSION,
         }
     ]
     [risk] = summary['risks']
@@ -299,7 +318,7 @@ def test_a_vulnerable_cloud_weakens_every_hybrid_gateway():
         ['gw-1', 'gw-2'],
         READERS,
         [],
-        cloud_openssl='OpenSSL 3.5.7 9 Jun 2026',
+        cloud_openssl=AFFECTED_VERSION,
     )
 
     assert [g['id'] for g in summary['weakened']] == ['gw-1']

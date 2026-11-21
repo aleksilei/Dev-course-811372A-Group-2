@@ -151,8 +151,8 @@ const VIEWS = {
       const { gateways } = summary;
       const trafficNote = summary.readiness === null
         ? 'No access events in the last hour; traffic readiness is unavailable. '
-        : `${percent(summary.non_pqc_traffic_share)} of access events in the last hour `
-          + 'used non-PQC or unknown key exchange. ';
+        : 'Counts access events in the last hour that used hybrid key exchange '
+          + 'with patched OpenSSL at both ends. ';
       const blockers = [
         ...summary.classical.map((g) => [
           g.id, 'classical key exchange', g.readers, percent(g.traffic_share), 'upgrade or replace',
@@ -174,7 +174,7 @@ const VIEWS = {
           el('span', { text: 'PQC traffic readiness' }),
           el('progress', { max: 1, value: summary.readiness ?? 0 }),
           el('span', { className: 'hint', text: `${trafficNote}Gateway coverage is ${percent(summary.gateway_coverage)} `
-            + `(${gateways.hybrid} of ${plural(gateways.connected, 'connected gateway')} on post-quantum hybrid).` })),
+            + `(${gateways.hybrid} of ${plural(gateways.connected, 'connected gateway')} on patched hybrid links).` })),
         el('h3', { text: 'Blocking readiness' }),
         blockers.length
           ? table(
@@ -213,9 +213,9 @@ const VIEWS = {
           el('p', { text: summary.non_pqc_traffic_share === null
             ? 'No access events in the last hour; traffic readiness is unavailable.'
             : summary.non_pqc_traffic_share === 0
-              ? 'All access events in the last hour used confirmed post-quantum key exchange.'
+              ? 'All access events in the last hour used hybrid key exchange with patched OpenSSL at both ends.'
               : `${percent(summary.non_pqc_traffic_share)} of access events in the last hour `
-                + 'used non-PQC or unknown key exchange. These events are not confirmed quantum-safe.' })),
+                + 'lacked confirmed hybrid key exchange with patched OpenSSL at both ends.' })),
         el('h3', { text: 'Quantum-vulnerable connections' }),
         exposed
           ? table(['Gateway', 'Key exchange', 'Readers behind it', 'Share of recent traffic'], [

@@ -8,8 +8,8 @@ A gateway that negotiated hybrid key exchange is "weakened" (SCRUM-51) when
 the OpenSSL at either end of its link, its own or the cloud's, has an ML-KEM
 advisory, or can't be confirmed patched (see lib.openssl). Its ML-KEM can't be
 trusted, so it is no stronger than classical. It doesn't count as protected,
-and the status counts it like a classical gateway. Traffic readiness can't
-tell: events record only the key exchange, not the OpenSSL version.
+and the status counts it like a classical gateway. Traffic readiness uses the
+negotiated group and the OpenSSL versions recorded with each event.
 """
 
 import re
@@ -56,16 +56,24 @@ def _gateway_groups(
 
 
 def _traffic_summary(events: list[dict]) -> dict:
-    """Use recorded encryption at event time; unknown events count as non-PQC."""
-    counts = Counter()
+    """Count hybrid traffic as ready only when both OpenSSL versions check out."""
+    total = ready = classical = 0
     for event in events:
-        counts[is_post_quantum(event.get('key_exchange'))] += event.get('count', 1)
-    total = sum(counts.values())
+        count = event.get('count', 1)
+        total += count
+        hybrid = is_post_quantum(event.get('key_exchange'))
+        if hybrid is False:
+            classical += count
+        elif hybrid and all(
+            not openssl.breaks(openssl.details(event.get(field)), openssl.ML_KEM)
+            for field in ('gateway_openssl', 'cloud_openssl')
+        ):
+            ready += count
     return {
         'total': total,
-        'readiness': _share(counts[True], total),
-        'non_pqc_share': _share(counts[False] + counts[None], total),
-        'classical_share': _share(counts[False], total),
+        'readiness': _share(ready, total),
+        'non_pqc_share': _share(total - ready, total),
+        'classical_share': _share(classical, total),
     }
 
 
@@ -84,8 +92,8 @@ def summarize(  # pylint: disable=too-many-arguments,too-many-locals
     connected: GatewayHub.connected() rows (id, post_quantum, key_exchange, ...)
     known_ids: gateway IDs in the database
     readers: Database.readers() rows (id, gateway_id, zone_name)
-    events: access events (gateway_id, key_exchange), unless traffic_counts is supplied
-    traffic_counts: rows (gateway_id, key_exchange, count) within the traffic window
+    events: access events with gateway ID, key exchange and both OpenSSL versions
+    traffic_counts: grouped events with the same fields plus count, within the window
     cloud_openssl: the cloud's own OpenSSL version (None: left out)
     """
     cloud = None if cloud_openssl is None else openssl.details(cloud_openssl)
