@@ -77,7 +77,7 @@ post-quantum migration (persona cards, 811373A):
 |---|---|---|
 | `cio` (default) | the CIO, and the key customer | green / amber / red status and the top three risks in plain language, without addresses or device names |
 | `migration` | the PQC migration project manager | traffic-weighted PQC readiness, gateway coverage, and the gateways blocking it |
-| `security` | the security officer | the quantum-vulnerable connections (classical, weakened by a vulnerable OpenSSL, or unknown) with the reason, including the OpenSSL version, the readers behind them and their share of last-hour traffic; what switching to `KEY_EXCHANGE=hybrid-only` would disconnect; offline gateways; the encryption library (OpenSSL) versions in use and who runs each; and the encryption status and OpenSSL version of every device and the cloud (see below). Never green while a classical or weakened connection remains |
+| `security` | the security officer | the quantum-vulnerable connections with the readers behind them and their share of last-hour traffic, what switching to `KEY_EXCHANGE=hybrid-only` would disconnect, offline gateways, and the encryption status of every device (see below). Never green while a classical connection remains |
 
 Each view ends with "Your concerns": what the dashboard addresses for that
 stakeholder, what it doesn't yet, and what it won't (policy decisions where

@@ -7,8 +7,6 @@ const panel = loadPanel();
 const percent = panel.get('percent');
 const plural = panel.get('plural');
 const linkText = panel.get('linkText');
-const weakenedReason = panel.get('weakenedReason');
-const libraryVersions = panel.get('libraryVersions');
 const statusCounts = panel.get('statusCounts');
 const route = panel.get('route');
 const DEVICE_STATUS = panel.get('DEVICE_STATUS');
@@ -35,21 +33,6 @@ test('linkText describes a link, with what is unknown marked', () => {
     'X25519 (classical), TLSv1.3, TLS_AES_256_GCM_SHA384');
   assert.equal(linkText({ key_exchange: null, post_quantum: null }), 'unknown (unknown), ?, ?');
   assert.equal(linkText(null), '–');
-});
-
-test('weakenedReason names the end whose OpenSSL breaks ML-KEM, with its version', () => {
-  const vulnerable = { openssl: 'OpenSSL 3.5.7', openssl_checked: true, openssl_vulnerable: true };
-  const patched = { openssl: 'OpenSSL 3.5.9', openssl_checked: true, openssl_vulnerable: false };
-  const unreported = { openssl: null, openssl_checked: false, openssl_vulnerable: true };
-
-  assert.equal(weakenedReason(vulnerable, patched),
-    'vulnerable OpenSSL (gateway: OpenSSL 3.5.7: vulnerable)');
-  assert.equal(weakenedReason(patched, vulnerable),
-    'vulnerable OpenSSL (cloud: OpenSSL 3.5.7: vulnerable)');
-  assert.equal(weakenedReason(unreported, vulnerable),
-    'vulnerable OpenSSL (gateway: not reported: assumed vulnerable; cloud: OpenSSL 3.5.7: vulnerable)');
-  assert.equal(weakenedReason(vulnerable, null),
-    'vulnerable OpenSSL (gateway: OpenSSL 3.5.7: vulnerable)');
 });
 
 test('statusCounts lists each status in the given order', () => {
@@ -79,25 +62,4 @@ test('route reads the tab and view from the URL, defaulting what it does not kno
     panel.context.window.location.hash = hash;
     assert.deepEqual(plain(route()), expected, hash);
   }
-});
-
-test('libraryVersions lists each OpenSSL version in use and who runs it, vulnerable first', () => {
-  const old = { openssl: 'OpenSSL 3.5.7', openssl_checked: true, openssl_vulnerable: true };
-  const updated = { openssl: 'OpenSSL 3.5.9', openssl_checked: true, openssl_vulnerable: false };
-  const devices = {
-    cloud: updated,
-    devices: [
-      { id: 'gw-1', ...updated },
-      { id: 'gw-2', ...old },
-      { id: 'rd-1', ...old },
-      { id: 'rd-2', openssl: null, openssl_vulnerable: null }, // offline: left out
-    ],
-  };
-
-  const rows = plain(libraryVersions(devices));
-
-  assert.deepEqual(rows.map((row) => [row[0], row[1], row[2].text, row[3]]), [
-    ['OpenSSL', 'OpenSSL 3.5.7', 'vulnerable', 'gw-2, rd-1'],
-    ['OpenSSL', 'OpenSSL 3.5.9', 'patched', 'cloud, gw-1'],
-  ]);
 });

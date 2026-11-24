@@ -58,103 +58,32 @@ function linkText(link) {
   return `${link.key_exchange ?? 'unknown'} (${kind}), ${link.tls_version ?? '?'}, ${link.cipher ?? '?'}`;
 }
 
-// Why a weakened gateway (SCRUM-51) is no stronger than classical: the
-// vulnerable OpenSSL at its end, the cloud's, or both, worded as in the
-// Operations tab (app.js). gateway is its /api/devices row, cloud the
-// cloud's own OpenSSL details.
-function weakenedReason(gateway, cloud) {
-  const ends = [['gateway', gateway], ['cloud', cloud]]
-    .filter(([, device]) => device?.openssl_vulnerable === true)
-    .map(([who, device]) => `${who}: ${opensslLabel(device).text}`);
-  return `vulnerable OpenSSL (${ends.join('; ') || 'unknown'})`;
-}
-
-// The encryption library versions in use: one row per OpenSSL version that
-// the cloud or a connected device runs, with who runs it. Vulnerable or
-// unreported versions first. Offline devices report nothing and are left out.
-function libraryVersions(devices) {
-  const holders = [
-    ...(devices.cloud ? [{ ...devices.cloud, id: 'cloud' }] : []),
-    ...devices.devices.filter((device) => device.openssl_vulnerable !== null),
-  ];
-  const rows = new Map();
-  for (const device of holders) {
-    const key = device.openssl ?? '';
-    if (!rows.has(key)) rows.set(key, { device, ids: [] });
-    rows.get(key).ids.push(device.id);
-  }
-  return [...rows.values()]
-    .sort((a, b) => Number(b.device.openssl_vulnerable) - Number(a.device.openssl_vulnerable))
-    .map(({ device, ids }) => {
-      const label = opensslLabel(device); // from app.js
-      return [
-        'OpenSSL',
-        device.openssl ?? 'not reported',
-        { text: device.openssl_vulnerable ? 'vulnerable' : 'patched',
-          className: device.openssl_vulnerable ? 'warn' : 'pass', title: label.title ?? '' },
-        ids.join(', '),
-      ];
-    });
-}
-
 function statusCounts(counts, statuses) {
   return statuses.map((status) => `${counts[status]} ${status}`).join(', ');
 }
 
 // The encryption status of every device (SCRUM-18): one row per gateway and
 // reader, its own link, and for readers also their gateway's link to the cloud.
-// weakened: the IDs of hybrid gateways on a vulnerable OpenSSL (SCRUM-51),
-// shown as classical, as in the CIO and migration views.
-function deviceStatus(devices, weakened = new Set()) {
+function deviceStatus(devices) {
   if (!devices) return [el('p', { text: 'Loading…' })];
-  const statusOf = (device) => (device.type === 'gateway' && weakened.has(device.id)
-    && device.status === 'post-quantum' ? 'classical' : device.status);
-  const counts = { gateway: {}, reader: {} };
-  for (const type of Object.keys(counts)) {
-    for (const status of devices.statuses) counts[type][status] = 0;
-  }
-  for (const device of devices.devices) counts[device.type][statusOf(device)] += 1;
   const own = (device) => device.links[0];
   const upstream = (device) => (device.type === 'reader' ? device.links[1] : null);
-  // The OpenSSL a device reports (SCRUM-51), worded and coloured as in the
-  // Operations tab; hover for the advisory.
-  const opensslCellOf = (device) => {
-    const label = opensslLabel(device); // from app.js
-    return { text: label.text ?? '–', className: label.className, title: label.title ?? '' };
-  };
-  const cloud = devices.cloud ? opensslLabel(devices.cloud) : null;
-  const versions = libraryVersions(devices);
   return [
-    el('h3', { text: 'Encryption library versions' }),
-    el('p', { className: 'hint', text: 'The OpenSSL version the cloud and every connected device run. '
-      + 'OpenSSL does all of their TLS, including the hybrid ML-KEM key exchange. Versions before 3.5.8 '
-      + '(such as the old 3.5.7) have the ML-KEM vulnerability; the updated 3.5.9 is patched. A device '
-      + 'that reports no version is assumed vulnerable.' }),
-    versions.length
-      ? table(['Library', 'Version', 'Status', 'Used by'], versions)
-      : el('p', { text: 'No connected device has reported a version.' }),
     el('h3', { text: 'Encryption status of every device' }),
-    el('p', { className: 'hint', text: `Gateways: ${statusCounts(counts.gateway, devices.statuses)}. `
-      + `Readers: ${statusCounts(counts.reader, devices.statuses)}. A device is as strong as its `
+    el('p', { className: 'hint', text: `Gateways: ${statusCounts(devices.counts.gateway, devices.statuses)}. `
+      + `Readers: ${statusCounts(devices.counts.reader, devices.statuses)}. A device is as strong as its `
       + 'weakest link: reader traffic crosses the classical reader → gateway hop (per the spec) and its '
-      + "gateway's link to the cloud. A hybrid gateway on a vulnerable OpenSSL, at its end or the cloud's, "
-      + 'is no stronger than classical.' }),
-    table(['Device', 'Type', 'Gateway', 'Status', 'OpenSSL', 'Own link', "Gateway's link to the cloud",
-      'Connection'],
-    devices.devices.map((device) => [
-      device.id,
-      device.type,
-      device.gateway ?? '–',
-      statusOf(device) === device.status
-        ? { text: device.status, className: DEVICE_STATUS[device.status] }
-        : { text: 'classical (vulnerable OpenSSL)', className: DEVICE_STATUS.classical },
-      opensslCellOf(device),
-      linkText(own(device)),
-      device.type === 'reader' ? linkText(upstream(device)) : '–',
-      connectionLabel(device), // from app.js, as in the Readers list
-    ])),
-    ...(cloud?.text ? [el('p', { className: `hint ${cloud.className}`.trim(), title: cloud.title ?? '',
-      text: `The cloud's own OpenSSL, at the other end of every gateway link: ${cloud.text}.` })] : []),
+      + "gateway's link to the cloud." }),
+    table(['Device', 'Type', 'Gateway', 'Status', 'Own link', "Gateway's link to the cloud", 'Connection'],
+      devices.devices.map((device) => [
+        device.id,
+        device.type,
+        device.gateway ?? '–',
+        { text: device.status, className: DEVICE_STATUS[device.status] },
+        linkText(own(device)),
+        device.type === 'reader' ? linkText(upstream(device)) : '–',
+        connectionLabel(device), // from app.js, as in the Readers list
+      ])),
     el('p', { className: 'hint', text: `This control panel: ${linkText(devices.panel)}.` }),
   ];
 }
@@ -275,16 +204,12 @@ const VIEWS = {
     question: 'Which connections are still quantum-vulnerable, and how serious is that?',
     draw(summary, devices) {
       const { gateways } = summary;
-      // Weakened: hybrid, but on a vulnerable OpenSSL at either end (SCRUM-51).
-      const exposed = gateways.classical + gateways.weakened + gateways.unknown;
+      const exposed = gateways.classical + gateways.unknown;
       const cut = summary.hybrid_only_disconnects;
-      const deviceRow = (id) => devices?.devices.find((d) => d.type === 'gateway' && d.id === id)
-        ?? { openssl: null, openssl_vulnerable: null };
-      const headline = exposed ? (summary.status === 'red' ? 'red' : 'amber') : 'green';
       return [
-        el('div', { className: `headline ${headline}` },
-          statusBadge(headline,
-            exposed ? `Exposed: ${plural(exposed, 'connection')}` : 'No quantum-vulnerable connections'),
+        el('div', { className: `headline ${exposed ? (summary.status === 'red' ? 'red' : 'amber') : 'green'}` },
+          statusBadge(exposed ? (summary.status === 'red' ? 'red' : 'amber') : 'green',
+            exposed ? `Exposed: ${plural(exposed, 'connection')}` : 'No classical connections'),
           el('p', { text: summary.non_pqc_traffic_share === null
             ? 'No access events in the last hour; traffic readiness is unavailable.'
             : summary.non_pqc_traffic_share === 0
@@ -293,18 +218,9 @@ const VIEWS = {
                 + 'lacked confirmed hybrid key exchange with patched OpenSSL at both ends.' })),
         el('h3', { text: 'Quantum-vulnerable connections' }),
         exposed
-          ? table(['Gateway', 'Key exchange', 'Why', 'Readers behind it', 'Share of recent traffic'], [
-            ...summary.classical.map((g) => [
-              g.id, g.key_exchange, 'classical key exchange', g.readers, percent(g.traffic_share),
-            ]),
-            ...summary.weakened.map((g) => [
-              g.id, g.key_exchange, { text: weakenedReason(deviceRow(g.id), summary.cloud), className: 'warn',
-                title: deviceRow(g.id).openssl_advisory ?? summary.cloud?.openssl_advisory ?? '' },
-              g.readers, percent(g.traffic_share),
-            ]),
-            ...summary.unknown.map((g) => [
-              g.id, 'unknown', 'key exchange unknown', g.readers, percent(g.traffic_share),
-            ]),
+          ? table(['Gateway', 'Key exchange', 'Readers behind it', 'Share of recent traffic'], [
+            ...summary.classical.map((g) => [g.id, g.key_exchange, g.readers, percent(g.traffic_share)]),
+            ...summary.unknown.map((g) => [g.id, 'unknown', g.readers, percent(g.traffic_share)]),
           ])
           : el('p', { text: 'None.' }),
         el('h3', { text: 'If classical fallback is turned off' }),
@@ -312,33 +228,24 @@ const VIEWS = {
           ? `Switching the cloud to hybrid-only would disconnect ${plural(cut.gateways, 'gateway')} `
             + `and lock ${plural(cut.readers, 'door')} until they are upgraded.`
           : 'Switching the cloud to hybrid-only would disconnect no gateway.' }),
-        ...(gateways.weakened ? [el('p', { className: 'hint', text: `It would not fix the ${plural(gateways.weakened,
-          'weakened gateway')}: they negotiate hybrid key exchange, so they stay connected until OpenSSL is `
-          + 'upgraded.' })] : []),
         ...(summary.offline.length ? [
           el('h3', { text: 'Offline gateways (not monitored)' }),
           table(['Gateway', 'Readers behind it'], summary.offline.map((g) => [g.id, g.readers])),
         ] : []),
-        ...deviceStatus(devices, new Set(summary.weakened.map((g) => g.id))),
+        ...deviceStatus(devices),
       ];
     },
     concerns: {
       addressed: [
         'Which connections are still quantum-vulnerable, with the readers behind them and their share of traffic.',
-        'Hybrid connections weakened by a vulnerable OpenSSL at either end (e.g. the old 3.5.7) count as '
-          + 'quantum-vulnerable, with the OpenSSL version as the reason; the updated 3.5.9 is patched.',
-        'No "green" while any classical or weakened connection remains.',
-        'What turning off classical fallback would disconnect, and that it would not fix a vulnerable OpenSSL.',
+        'No "green" while any classical connection remains.',
+        'What turning off classical fallback would disconnect.',
         'Current and past gateway sessions, with their addresses and key exchanges, in the Logs tab.',
-        'A list of the encryption library (OpenSSL) versions in use, and which devices and the cloud run each.',
-        'The encryption status of every device and link: TLS version, cipher, key exchange, and the '
-          + "current OpenSSL version of each device and of the cloud.",
+        'The encryption status of every device and link: TLS version, cipher and key exchange.',
       ],
       notYet: [
         'Automatic alerts on downgrade attempts; the connection history makes changes visible but does not '
           + 'raise an alarm.',
-        'Verified library versions: each device reports its own OpenSSL version and the cloud takes it on '
-          + 'trust, like device IDs.',
       ],
       wont: [
         'Disabling classical fallback on all connections this quarter: a policy decision that conflicts with the '
@@ -374,20 +281,11 @@ function drawView() {
   if (tab !== 'stakeholders' || !latestSummary) return;
 
   const spec = VIEWS[view];
-  redraw('stakeholder-view', [view, latestSummary, latestDevices], () => {
-    // Traffic shares change with almost every refresh, so the view is redrawn
-    // often: keep each table's scroll position, as the Operations tab does.
-    const scrolled = [...$('view').querySelectorAll('.scroll')]
-      .map((box) => [box.scrollLeft, box.scrollTop]);
-    $('view').replaceChildren(
-      el('p', { className: 'question', text: `“${spec.question}”` }),
-      ...spec.draw(latestSummary, latestDevices),
-      concerns(spec.concerns),
-    );
-    $('view').querySelectorAll('.scroll').forEach((box, index) => {
-      if (scrolled[index]) [box.scrollLeft, box.scrollTop] = scrolled[index];
-    });
-  });
+  redraw('stakeholder-view', [view, latestSummary, latestDevices], () => $('view').replaceChildren(
+    el('p', { className: 'question', text: `“${spec.question}”` }),
+    ...spec.draw(latestSummary, latestDevices),
+    concerns(spec.concerns),
+  ));
 }
 
 async function refreshSummary() {

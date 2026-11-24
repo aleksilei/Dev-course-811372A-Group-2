@@ -103,7 +103,7 @@ OpenSSL. Device names, where its data lives and each site's traffic: see
 |---|---|
 | `reader/`, `gateway/`, `cloud/` | one package + Dockerfile + README per component, run as `python -m <component>` |
 | `lib/` | shared code: env config, TLS contexts, WebSocket hub, certificates, the scaled stack |
-| `docs/` | the spec and architecture diagram, [CI/CD details](docs/ci.md), the [critical dependencies and libraries](docs/critical_dependencies.md), and the AI-usage records in `docs/ai/` |
+| `docs/` | the spec and architecture diagram, [CI/CD details](docs/ci.md), and the AI-usage records in `docs/ai/` |
 | `tests/unit/<component>/` | unit tests, one directory per component; the panel's JavaScript tests in `tests/unit/cloud/static/` |
 | `tests/integration/` | integration tests: readers → gateway → cloud in one process, over real TLS |
 | `tests/e2e/` | end-to-end tests: the docker-compose deployment, from the built images |
